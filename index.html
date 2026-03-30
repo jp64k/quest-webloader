@@ -1,0 +1,1940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="manifest" href="site.webmanifest">
+<title>Quest Webloader</title>
+<style>
+:root {
+  --bg: #0a0a0a; --surface: rgba(255,255,255,.04); --card: rgba(255,255,255,.06); --border: rgba(255,255,255,.08);
+  --glass: rgba(255,255,255,.05); --glass-h: rgba(255,255,255,.09);
+  --text: #f0f0f0; --dim: rgba(255,255,255,.4);
+  --accent: #7c6aef; --accent-h: #6b58d6;
+  --ok: #34d399; --warn: #fbbf24; --bad: #9e3333; --bad-h: #7a2828;
+  --blur: 20px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:16px}
+body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;overflow-x:hidden}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+#app{max-width:760px;margin:0 auto;padding:2rem 1.5rem}
+
+/* header */
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;animation:fadeUp .5s ease}
+.logo{display:flex;align-items:center;gap:.6rem;color:var(--accent)}
+.logo h1{font-size:1.25rem;font-weight:600;letter-spacing:-.02em}
+.logo .by{font-size:.85rem;color:var(--dim);font-weight:400}
+.logo .by a{color:var(--accent);text-decoration:none;transition:color .2s}
+.logo .by a:hover{color:var(--accent-h)}
+.status-bar{display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--dim)}
+.dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;transition:background .3s,box-shadow .3s}
+.dot.off{background:var(--bad);box-shadow:0 0 6px rgba(158,51,51,.5)}.dot.wait{background:var(--warn);animation:pulse 1s infinite;box-shadow:0 0 8px rgba(251,191,36,.4)}.dot.on{background:var(--ok);box-shadow:0 0 8px rgba(52,211,153,.4)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* buttons */
+#controls{display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1.5rem}
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem 1.15rem;border:none;border-radius:12px;font-size:.875rem;font-weight:500;cursor:pointer;transition:all .25s ease;color:#fff;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,0,0,.3)}
+.btn:active:not(:disabled){transform:translateY(0);box-shadow:none}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.p{background:linear-gradient(135deg,var(--accent),#a78bfa)}.btn.p:hover:not(:disabled){background:linear-gradient(135deg,var(--accent-h),#9678e6)}
+.btn.d{background:var(--bad)}.btn.d:hover:not(:disabled){background:var(--bad-h)}
+.btn.s{background:var(--glass);border:1px solid var(--border);color:var(--text)}.btn.s:hover:not(:disabled){background:var(--glass-h)}
+.btn.sm{padding:.35rem .8rem;font-size:.8rem;border-radius:8px}
+
+/* notices */
+.notice{background:var(--glass);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));border:1px solid var(--border);border-radius:16px;padding:1.5rem;margin-bottom:1.5rem;text-align:center}
+.notice.err{border-color:rgba(158,51,51,.4);background:rgba(158,51,51,.1)}
+.notice p{color:var(--dim);margin:.5rem 0}.notice h2{font-size:1.1rem}
+.spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto .75rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.85rem;isolation:isolate}
+.card{background:#141414;border:1px solid var(--border);border-radius:16px;padding:1.15rem;display:flex;flex-direction:column;gap:.2rem;transition:all .3s ease;animation:fadeUp .4s ease backwards;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent)}
+.card:nth-child(1){animation-delay:.05s}.card:nth-child(2){animation-delay:.1s}.card:nth-child(3){animation-delay:.15s}
+.card:hover{border-color:rgba(255,255,255,.15);transform:translateY(-3px);box-shadow:0 8px 30px rgba(0,0,0,.3);background:#181818}
+.card-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
+.card-value{font-size:1.35rem;font-weight:600}.card-sub{font-size:.78rem;color:var(--dim);min-height:1.2em}
+.bar-track{height:6px;border-radius:3px;background:rgba(255,255,255,.08);margin-top:.5rem;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;width:0;transition:width .6s ease,background .4s;background:var(--ok)}
+.bar-fill.mid{background:var(--warn)}.bar-fill.low{background:var(--bad)}
+.bar-fill.sto{transition:width .6s ease,background .4s}
+
+/* apps */
+.apps-header{display:flex;align-items:center;justify-content:space-between;margin:2rem 0 .75rem;flex-wrap:wrap;gap:.5rem}
+.apps-header h2{font-size:1.05rem;font-weight:600}
+.apps-header .meta{font-size:.8rem;color:var(--dim)}
+.apps-toolbar{display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem;flex-wrap:wrap}
+.apps-toolbar input{flex:1;min-width:150px;padding:.45rem .75rem;border-radius:10px;border:1px solid var(--border);background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:var(--text);font-size:.85rem;outline:none;transition:border-color .2s,box-shadow .2s}
+.apps-toolbar input:focus{border-color:rgba(124,106,239,.5);box-shadow:0 0 0 3px rgba(124,106,239,.15)}
+.apps-toolbar select{padding:.45rem .6rem;border-radius:10px;border:1px solid var(--border);background:#1a1a1a;color:var(--text);font-size:.82rem;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23777'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .6rem center;padding-right:1.6rem}\n.apps-toolbar select option{background:#1a1a1a;color:var(--text)}
+.app-list{display:flex;flex-direction:column;gap:.45rem;max-height:520px;overflow-y:auto;padding:2px 6px 2px 2px;margin:0 -2px}
+.app-list::-webkit-scrollbar{width:5px}.app-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}
+.app-row{display:flex;align-items:center;gap:.75rem;background:var(--glass);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));border:1px solid var(--border);border-radius:14px;padding:.7rem .9rem;transition:all .25s ease;animation:fadeIn .3s ease backwards}
+.app-row:hover{border-color:rgba(255,255,255,.14);background:var(--glass-h);box-shadow:0 4px 20px rgba(0,0,0,.2)}
+.app-thumb{width:56px;height:32px;border-radius:8px;object-fit:cover;flex-shrink:0;background:rgba(255,255,255,.06);cursor:pointer;transition:transform .2s ease}
+.app-thumb:hover{transform:scale(1.05)}
+.app-thumb-popup{position:fixed;z-index:100;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.1);pointer-events:none;object-fit:cover;opacity:0;transform:scale(.7);transition:opacity .2s ease,transform .2s cubic-bezier(.34,1.56,.64,1)}
+.app-thumb-popup.show{opacity:1;transform:scale(1)}
+.app-thumb-placeholder{width:56px;height:32px;border-radius:8px;flex-shrink:0;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;font-size:1.1rem;color:var(--dim)}
+.app-name{flex:1;min-width:0}
+.app-name .pkg{font-size:.85rem;font-weight:500;word-break:break-all}
+.app-name .label{font-size:.75rem;color:var(--dim);margin-top:.1rem}
+.app-meta{text-align:right;flex-shrink:0;font-size:.78rem;color:var(--dim);line-height:1.5}
+.app-row .btn{flex-shrink:0}
+.uninstalling{opacity:.5;pointer-events:none}
+
+/* drop zone */
+.drop-overlay{position:fixed;inset:0;background:rgba(124,106,239,.08);border:3px dashed var(--accent);z-index:999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.drop-overlay .drop-msg{background:var(--glass);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));border:1px solid rgba(124,106,239,.3);border-radius:20px;padding:2.5rem 3rem;text-align:center}
+.drop-msg .ico{font-size:2.2rem;margin-bottom:.4rem}
+.drop-msg .t{font-weight:600;font-size:1rem;margin-bottom:.25rem}
+.drop-msg .s{font-size:.82rem;color:var(--dim)}
+
+/* install progress */
+.install-box{background:var(--glass);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));border:1px solid var(--border);border-radius:14px;padding:1rem 1.1rem;margin-bottom:.85rem}
+.install-box .step{font-size:.85rem;font-weight:500;margin-bottom:.5rem}
+.install-box .bar-track{margin-bottom:.5rem}
+.install-log{max-height:180px;overflow-y:auto;font-size:.78rem;color:var(--dim);line-height:1.6}
+.install-log::-webkit-scrollbar{width:4px}.install-log::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+.install-log .ok{color:var(--ok)}
+.install-log .err{color:var(--bad)}
+.install-log .warn{color:var(--warn)}
+.speed-info{font-size:.75rem;color:var(--dim);margin-bottom:.4rem;display:flex;justify-content:space-between}
+.backing-up{opacity:.6;pointer-events:none}
+
+.drop-hint{font-size:.8rem;color:var(--dim);margin-bottom:.65rem;padding:.45rem .75rem;border:1px dashed rgba(255,255,255,.1);border-radius:10px;text-align:center;opacity:.7;transition:opacity .2s}
+.drop-hint:hover{opacity:1}
+footer{margin-top:3rem;text-align:center;font-size:.75rem;color:var(--dim)}
+.apps-header{animation:fadeUp .4s ease}
+.apps-toolbar{animation:fadeUp .4s ease .05s backwards}
+#controls{animation:fadeUp .4s ease .1s backwards}
+.sn-toggle{background:none;border:none;cursor:pointer;font-size:.7rem;padding:0 .3rem;color:var(--dim);vertical-align:middle;opacity:.6;transition:opacity .2s}
+.sn-toggle:hover{opacity:1}
+
+/* PC Library */
+#pc-library{margin-top:2rem;animation:fadeUp .4s ease}
+#pc-library .lib-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem}
+#pc-library .lib-header h2{font-size:1.05rem;font-weight:600}
+#pc-library .lib-header .meta{font-size:.8rem;color:var(--dim)}
+#pc-library .lib-toolbar{display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem;flex-wrap:wrap}
+#pc-library .lib-toolbar input{flex:1;min-width:150px;padding:.45rem .75rem;border-radius:10px;border:1px solid var(--border);background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:var(--text);font-size:.85rem;outline:none;transition:border-color .2s,box-shadow .2s}
+#pc-library .lib-toolbar input:focus{border-color:rgba(124,106,239,.5);box-shadow:0 0 0 3px rgba(124,106,239,.15)}
+#pc-library .lib-toolbar select{padding:.45rem .6rem;border-radius:10px;border:1px solid var(--border);background:#1a1a1a;color:var(--text);font-size:.82rem;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23777'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .6rem center;padding-right:1.6rem}
+#pc-library .lib-toolbar select option{background:#1a1a1a;color:var(--text)}
+.lib-row{display:flex;align-items:center;gap:.75rem;background:var(--glass);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));border:1px solid var(--border);border-radius:14px;padding:.7rem .9rem;transition:all .25s ease;animation:fadeIn .3s ease backwards}
+.lib-row:hover{border-color:rgba(255,255,255,.14);background:var(--glass-h);box-shadow:0 4px 20px rgba(0,0,0,.2)}
+.lib-name{flex:1;min-width:0}
+.lib-name .pkg{font-size:.85rem;font-weight:500;word-break:break-all}
+.lib-name .label{font-size:.75rem;color:var(--dim);margin-top:.1rem}
+.lib-meta{text-align:right;flex-shrink:0;font-size:.78rem;color:var(--dim);line-height:1.5}
+.lib-row .btn{flex-shrink:0}
+.ver-badge{display:inline-block;font-size:.68rem;padding:.1rem .4rem;border-radius:6px;font-weight:500;margin-left:.3rem;vertical-align:middle}
+.ver-badge.newer{background:rgba(52,211,153,.15);color:var(--ok)}
+.ver-badge.same{background:rgba(255,255,255,.08);color:var(--dim)}
+.ver-badge.older{background:rgba(251,191,36,.15);color:var(--warn)}
+.ver-badge.new-app{background:rgba(124,106,239,.15);color:var(--accent)}
+.lib-list{display:flex;flex-direction:column;gap:.45rem;max-height:520px;overflow-y:auto;padding:2px 6px 2px 2px;margin:0 -2px}
+.lib-list::-webkit-scrollbar{width:5px}.lib-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}
+.lib-note{font-size:.78rem;color:var(--dim);text-align:center;padding:.6rem;background:var(--glass);border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="5"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/></svg>
+      <h1>Quest Webloader <span class="by">by <a id="author-link" href="https://discord.com/users/196992876029280257" target="_blank" rel="noopener noreferrer"><span id="author-name">JP</span></a></span></h1>
+    </div>
+    <div class="status-bar">
+      <span id="dot" class="dot off"></span>
+      <span id="stxt">Disconnected</span>
+    </div>
+  </header>
+
+  <main>
+    <section id="no-webusb" class="notice hidden">
+      <h2>WebUSB Not Supported</h2>
+      <p>Please use <strong>Google Chrome</strong> or another Chromium-based browser, served over <strong>localhost</strong>.</p>
+    </section>
+
+    <section id="controls">
+      <button id="btn-c" class="btn p">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+        Connect Device
+      </button>
+      <button id="btn-d" class="btn d" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Disconnect
+      </button>
+      <button id="btn-r" class="btn s" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Refresh
+      </button>
+    </section>
+
+    <section id="con-box" class="notice hidden">
+      <div class="spinner"></div>
+      <p id="con-txt">Connecting…</p>
+    </section>
+
+    <section id="info" class="hidden">
+      <div class="cards">
+        <div class="card">
+          <div class="card-label">Battery</div>
+          <div class="card-value" id="bv">—</div>
+          <div class="card-sub" id="bs"></div>
+          <div class="bar-track"><div class="bar-fill" id="bb"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-label">Storage</div>
+          <div class="card-value" id="sv">—</div>
+          <div class="card-sub" id="sd"></div>
+          <div class="bar-track"><div class="bar-fill sto" id="sb"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-label">Device</div>
+          <div class="card-value" id="dm">—</div>
+          <div class="card-sub" id="dv"></div>
+          <div class="card-sub" id="ds"><button id="sn-toggle" class="sn-toggle" title="Show/Hide S/N" onclick="toggleSN()">👁</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="apps-section" class="hidden">
+      <div class="apps-header">
+        <h2>📦 Installed Apps</h2>
+        <span class="meta" id="apps-count"></span>
+      </div>
+      <p class="drop-hint" id="drop-hint">Drag &amp; drop APKs or game folders here to install</p>
+      <div id="apps-summary" class="hidden"></div>
+      <div class="apps-toolbar">
+        <button id="btn-apps" class="btn sm s">Reload</button>
+        <input type="text" id="apps-search" placeholder="Search apps…" />
+        <select id="apps-sort">
+          <option value="name">Sort by name</option>
+          <option value="size">Sort by size</option>
+        </select>
+      </div>
+      <div id="install-box" class="install-box hidden">
+        <div class="step" id="install-step">Preparing…</div>
+        <div class="speed-info" id="speed-info"></div>
+        <div class="bar-track"><div class="bar-fill" id="install-bar" style="width:0"></div></div>
+        <div class="install-log" id="install-log"></div>
+      </div>
+      <div class="app-list" id="app-list"></div>
+    </section>
+
+    <section id="pc-library" class="hidden">
+      <div class="lib-header">
+        <h2>💻 PC Library (Optional)</h2>
+        <span class="meta" id="lib-count"></span>
+      </div>
+      <div class="lib-note">Select a folder on your PC to scan for apps. Nothing is uploaded — all processing happens locally in your browser</div>
+      <div class="lib-toolbar">
+        <button id="btn-lib-folder" class="btn sm p">Select Folder</button>
+        <button id="btn-lib-rescan" class="btn sm s hidden">Rescan</button>
+        <input type="text" id="lib-search" class="hidden" placeholder="Search apps…" />
+        <select id="lib-sort" class="hidden">
+          <option value="name">Sort by name</option>
+          <option value="date">Sort by date</option>
+          <option value="size">Sort by size</option>
+        </select>
+      </div>
+      <div class="lib-list" id="lib-list"></div>
+    </section>
+
+    <section id="err-box" class="notice err hidden">
+      <p id="err-txt"></p>
+      <button id="btn-e" class="btn sm s">Dismiss</button>
+    </section>
+  </main>
+  <footer></footer>
+</div>
+
+<div id="drop-overlay" class="drop-overlay hidden">
+  <div class="drop-msg">
+    <div class="ico">📦</div>
+    <div class="t">Drop to install</div>
+    <div class="s">APK, OBB files or folders</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ================================================================
+   1.  RSA key management for ADB authentication
+   ================================================================
+   ADB AUTH signs a 20-byte random token using raw RSA PKCS#1-v1.5.
+   The token IS the digest value (SHA-1 sized) – the device expects
+   EMSA-PKCS1-v1_5 padding around it, NOT a re-hash.  Web Crypto
+   always re-hashes, so we do the RSA math ourselves with BigInt.
+   Keys are persisted in IndexedDB for automatic reconnection.
+   ================================================================ */
+
+const DB='quest-web-adb',STORE='keys',KEYID='rsa';
+
+// -- base64url / BigInt helpers --
+
+function b64u2bytes(s){
+  const b=s.replace(/-/g,'+').replace(/_/g,'/');
+  const p=b+'='.repeat((4-b.length%4)%4);
+  const d=atob(p);const a=new Uint8Array(d.length);
+  for(let i=0;i<d.length;i++)a[i]=d.charCodeAt(i);return a;
+}
+function bytes2b64(a){let s='';for(const b of a)s+=String.fromCharCode(b);return btoa(s)}
+function bytes2bi(a){let n=0n;for(const b of a)n=(n<<8n)|BigInt(b);return n}
+function bi2bytes(n,len){const o=new Uint8Array(len);for(let i=len-1;i>=0;i--){o[i]=Number(n&0xFFn);n>>=8n}return o}
+function b64u2bi(s){return bytes2bi(b64u2bytes(s))}
+function bi2le32(n,w){const a=new Uint32Array(w);const m=0xFFFFFFFFn;for(let i=0;i<w;i++){a[i]=Number((n>>BigInt(i*32))&m)}return a}
+
+function modPow(b,e,m){let r=1n;b=((b%m)+m)%m;while(e>0n){if(e&1n)r=r*b%m;e>>=1n;b=b*b%m}return r}
+function modInv(a,m){let[or,r]=[a,m],[os,s]=[1n,0n];while(r>0n){const q=or/r;[or,r]=[r,or-q*r];[os,s]=[s,os-q*s]}return((os%m)+m)%m}
+
+// -- IndexedDB --
+
+function openDB(){return new Promise((ok,no)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+async function loadKeys(){const db=await openDB();return new Promise((ok,no)=>{const t=db.transaction(STORE,'readonly');const r=t.objectStore(STORE).get(KEYID);r.onsuccess=()=>ok(r.result??null);r.onerror=()=>no(r.error)})}
+async function saveKeys(pair){const db=await openDB();return new Promise((ok,no)=>{const t=db.transaction(STORE,'readwrite');t.objectStore(STORE).put(pair,KEYID);t.oncomplete=()=>ok();t.onerror=()=>no(t.error)})}
+
+async function genKeys(){
+  const kp=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-1'},true,['sign','verify']);
+  return{pub:await crypto.subtle.exportKey('jwk',kp.publicKey),priv:await crypto.subtle.exportKey('jwk',kp.privateKey)};
+}
+
+async function getOrCreateKeys(){let p=await loadKeys();if(p)return p;p=await genKeys();await saveKeys(p);return p}
+
+// -- ADB token signing (raw RSA PKCS#1-v1.5 via CRT) --
+
+const SHA1_PREFIX=new Uint8Array([0x30,0x21,0x30,0x09,0x06,0x05,0x2b,0x0e,0x03,0x02,0x1a,0x05,0x00,0x04,0x14]);
+
+function signToken(priv,token){
+  const kLen=256;
+  const T=new Uint8Array(SHA1_PREFIX.length+token.length);T.set(SHA1_PREFIX);T.set(token,SHA1_PREFIX.length);
+  const psLen=kLen-3-T.length;if(psLen<8)throw new Error('token too large');
+  const em=new Uint8Array(kLen);em[1]=0x01;em.fill(0xFF,2,2+psLen);em.set(T,3+psLen);
+  const msg=bytes2bi(em);
+  const p=b64u2bi(priv.p),q=b64u2bi(priv.q),dp=b64u2bi(priv.dp),dq=b64u2bi(priv.dq),qi=b64u2bi(priv.qi);
+  const m1=modPow(msg%p,dp,p),m2=modPow(msg%q,dq,q);
+  const h=(qi*(((m1-m2)%p+p)%p))%p;
+  return bi2bytes(m2+h*q,kLen);
+}
+
+// -- Android RSA public-key struct --
+
+function pubKeyPayload(pub){
+  const NW=64,n=b64u2bi(pub.n),e=b64u2bi(pub.e);
+  const nW=bi2le32(n,NW);
+  const M=1n<<32n,nLow=n&(M-1n),n0inv=Number((M-modInv(nLow,M))&(M-1n));
+  const R=1n<<BigInt(32*NW),rr=(R*R)%n,rrW=bi2le32(rr,NW);
+  const buf=new ArrayBuffer(4+4+NW*4+NW*4+4),dv=new DataView(buf);let o=0;
+  dv.setInt32(o,NW,true);o+=4;dv.setUint32(o,n0inv,true);o+=4;
+  for(let i=0;i<NW;i++){dv.setUint32(o,nW[i],true);o+=4}
+  for(let i=0;i<NW;i++){dv.setUint32(o,rrW[i],true);o+=4}
+  dv.setInt32(o,Number(e),true);
+  return new TextEncoder().encode(bytes2b64(new Uint8Array(buf))+' QuestWebADB@browser\0');
+}
+
+/* ================================================================
+   2.  ADB-over-WebUSB protocol
+   ================================================================ */
+
+const CNXN=0x4e584e43,AUTH=0x48545541,OPEN=0x4e45504f,OKAY=0x59414b4f,WRTE=0x45545257,CLSE=0x45534c43;
+const AUTH_TOKEN=1,AUTH_SIG=2,AUTH_PUB=3;
+const AVER=0x01000000,MAXP=262144;
+const ENC=new TextEncoder(),DEC=new TextDecoder();
+
+class AdbDevice{
+  constructor(){this._usb=null;this._in=0;this._out=0;this._mp=MAXP;this._lid=1;this._ok=false;this._banner='';this._buf=new Uint8Array(0);this._q=Promise.resolve();this.onconnect=null;this.ondisconnect=null}
+  get connected(){return this._ok}
+  get usbDevice(){return this._usb}
+
+  async connect(dev){
+    this._usb=dev;
+    try{
+      await dev.open();
+      if(!dev.configuration)await dev.selectConfiguration(1);
+      let ai=null;
+      for(const i of dev.configuration.interfaces){
+        for(const a of i.alternates){
+          if(a.interfaceClass===0xFF&&a.interfaceSubclass===0x42&&a.interfaceProtocol===0x01){ai={n:i.interfaceNumber,a};break}
+        }
+        if(ai)break;
+      }
+      if(!ai)throw new Error('ADB interface not found – is USB debugging enabled?');
+      try{await dev.claimInterface(ai.n)}catch(ce){
+        throw new Error('Unable to claim interface – close any ADB tool (SideQuest, Rookie, etc.) and retry. '+ce.message);
+      }
+      for(const ep of ai.a.endpoints){
+        if(ep.type==='bulk'&&ep.direction==='in')this._in=ep.endpointNumber;
+        if(ep.type==='bulk'&&ep.direction==='out')this._out=ep.endpointNumber;
+      }
+      if(!this._in||!this._out)throw new Error('ADB bulk endpoints not found');
+      await this._handshake();
+      this._ok=true;
+      navigator.usb.addEventListener('disconnect',this._unplug);
+      this.onconnect?.();
+    }catch(e){await this._cleanup();throw e}
+  }
+
+  async disconnect(){
+    if(!this._usb)return;
+    navigator.usb.removeEventListener('disconnect',this._unplug);
+    await this._cleanup();
+    this.ondisconnect?.();
+  }
+
+  // Read next message addressed to stream `lid`, skip stale messages
+  async _rxFor(lid){
+    for(let s=0;;){
+      const msg=await this._rx();
+      if(msg.a1===lid)return msg;
+      if(++s>200)throw new Error('Too many stale messages');
+    }
+  }
+
+  // Queue-based shell: all commands are serialized
+  shell(cmd, onData){
+    const p=this._q.then(()=>this._shellExec(cmd, onData));
+    this._q=p.catch(()=>{});
+    return p;
+  }
+
+  // Queue-based push: file transfer via ADB sync protocol
+  push(file,remotePath,onProgress){
+    const p=this._q.then(()=>this._pushExec(file,remotePath,onProgress));
+    this._q=p.catch(()=>{});
+    return p;
+  }
+
+  async _shellExec(cmd, onData){
+    if(!this._ok)throw new Error('Not connected');
+    const lid=this._lid++;
+    let rid=0, out='';
+    await this._tx(OPEN,lid,0,'shell:'+cmd+'\0');
+    for(;;){
+      const msg=await this._rxFor(lid);
+      if(msg.c===OKAY){ rid=rid||msg.a0; }
+      else if(msg.c===WRTE){ rid=rid||msg.a0; const chunk=DEC.decode(msg.d); out+=chunk; if(onData)onData(chunk); await this._tx(OKAY,lid,rid); }
+      else if(msg.c===CLSE){ rid=rid||msg.a0; await this._tx(CLSE,lid,rid); break; }
+    }
+    return out;
+  }
+
+  async _pushExec(file,remotePath,onProgress){
+    if(!this._ok)throw new Error('Not connected');
+    const lid=this._lid++;
+    // Open sync stream
+    await this._tx(OPEN,lid,0,'sync:\0');
+    let msg=await this._rxFor(lid);
+    if(msg.c!==OKAY)throw new Error('sync: stream rejected');
+    const rid=msg.a0;
+
+    try{
+      // SEND request header
+      const pm=ENC.encode(remotePath+',33206');
+      const sh=new Uint8Array(8+pm.length);
+      sh.set(ENC.encode('SEND'));
+      new DataView(sh.buffer).setUint32(4,pm.length,true);
+      sh.set(pm,8);
+      await this._tx(WRTE,lid,rid,sh);
+      msg=await this._rxFor(lid);
+      if(msg.c!==OKAY)throw new Error('SEND rejected');
+
+      // DATA chunks
+      const CHUNK=this._mp-8;
+      const total=file.size;
+      let sent=0;
+      while(sent<total){
+        const end=Math.min(sent+CHUNK,total);
+        const raw=new Uint8Array(await file.slice(sent,end).arrayBuffer());
+        const pkt=new Uint8Array(8+raw.length);
+        pkt.set(ENC.encode('DATA'));
+        new DataView(pkt.buffer).setUint32(4,raw.length,true);
+        pkt.set(raw,8);
+        await this._tx(WRTE,lid,rid,pkt);
+        msg=await this._rxFor(lid);
+        if(msg.c!==OKAY)throw new Error('DATA write failed');
+        sent=end;
+        onProgress?.(sent,total);
+      }
+
+      // DONE
+      const dh=new Uint8Array(8);
+      dh.set(ENC.encode('DONE'));
+      new DataView(dh.buffer).setUint32(4,Math.floor(Date.now()/1000),true);
+      await this._tx(WRTE,lid,rid,dh);
+      msg=await this._rxFor(lid);
+      if(msg.c!==OKAY)throw new Error('DONE rejected');
+
+      // Read sync response
+      msg=await this._rxFor(lid);
+      if(msg.c===WRTE){
+        await this._tx(OKAY,lid,rid);
+        const id=DEC.decode(msg.d.subarray(0,4));
+        if(id==='FAIL'){
+          const elen=new DataView(msg.d.buffer,msg.d.byteOffset+4,4).getUint32(0,true);
+          throw new Error(DEC.decode(msg.d.subarray(8,8+elen)));
+        }
+        if(id!=='OKAY')throw new Error('Unexpected sync response: '+id);
+      }else if(msg.c===CLSE){
+        throw new Error('Stream closed during push');
+      }
+    }finally{
+      // Always close the sync stream
+      try{await this._tx(CLSE,lid,rid)}catch{}
+    }
+  }
+
+  // Queue-based pull: download file from device via ADB sync RECV
+  pull(remotePath,onProgress){
+    const p=this._q.then(()=>this._pullExec(remotePath,onProgress));
+    this._q=p.catch(()=>{});
+    return p;
+  }
+
+  async _pullExec(remotePath,onProgress){
+    if(!this._ok)throw new Error('Not connected');
+    const lid=this._lid++;
+    await this._tx(OPEN,lid,0,'sync:\0');
+    let msg=await this._rxFor(lid);
+    if(msg.c!==OKAY)throw new Error('sync: stream rejected');
+    const rid=msg.a0;
+
+    try{
+      // STAT to get file size
+      const sp=ENC.encode(remotePath);
+      const statReq=new Uint8Array(8+sp.length);
+      statReq.set(ENC.encode('STAT'));
+      new DataView(statReq.buffer).setUint32(4,sp.length,true);
+      statReq.set(sp,8);
+      await this._tx(WRTE,lid,rid,statReq);
+      msg=await this._rxFor(lid);
+      if(msg.c!==OKAY)throw new Error('STAT rejected');
+      msg=await this._rxFor(lid);
+      if(msg.c!==WRTE)throw new Error('STAT no response');
+      await this._tx(OKAY,lid,rid);
+      const statId=DEC.decode(msg.d.subarray(0,4));
+      let fileSize=0;
+      if(statId==='STAT'&&msg.d.length>=16){
+        fileSize=new DataView(msg.d.buffer,msg.d.byteOffset+8,4).getUint32(0,true);
+      }
+
+      // RECV request
+      const rp=ENC.encode(remotePath);
+      const rh=new Uint8Array(8+rp.length);
+      rh.set(ENC.encode('RECV'));
+      new DataView(rh.buffer).setUint32(4,rp.length,true);
+      rh.set(rp,8);
+      await this._tx(WRTE,lid,rid,rh);
+      msg=await this._rxFor(lid);
+      if(msg.c!==OKAY)throw new Error('RECV rejected');
+
+      // Sync sub-packets can span multiple WRTE messages, so we
+      // accumulate raw bytes in a buffer and parse from that.
+      const chunks=[];
+      let received=0;
+      let syncBuf=new Uint8Array(0);
+
+      const appendBuf=(data)=>{
+        const merged=new Uint8Array(syncBuf.length+data.length);
+        merged.set(syncBuf);merged.set(data,syncBuf.length);
+        syncBuf=merged;
+      };
+
+      for(;;){
+        // Ensure we have at least an 8-byte sync header
+        while(syncBuf.length<8){
+          msg=await this._rxFor(lid);
+          if(msg.c===CLSE)throw new Error('Stream closed during pull');
+          if(msg.c!==WRTE)continue;
+          await this._tx(OKAY,lid,rid);
+          appendBuf(msg.d);
+        }
+
+        const id=DEC.decode(syncBuf.subarray(0,4));
+        const len=new DataView(syncBuf.buffer,syncBuf.byteOffset+4,4).getUint32(0,true);
+
+        if(id==='DONE'){
+          return new Blob(chunks);
+        }else if(id==='FAIL'){
+          // Ensure we have the full error message
+          while(syncBuf.length<8+len){
+            msg=await this._rxFor(lid);
+            if(msg.c===WRTE){await this._tx(OKAY,lid,rid);appendBuf(msg.d)}
+          }
+          throw new Error(DEC.decode(syncBuf.subarray(8,8+len)));
+        }else if(id==='DATA'){
+          // Ensure we have the full chunk
+          while(syncBuf.length<8+len){
+            msg=await this._rxFor(lid);
+            if(msg.c===CLSE)throw new Error('Stream closed during pull');
+            if(msg.c===WRTE){await this._tx(OKAY,lid,rid);appendBuf(msg.d)}
+          }
+          chunks.push(syncBuf.slice(8,8+len));
+          received+=len;
+          onProgress?.(received,fileSize);
+          syncBuf=syncBuf.slice(8+len);
+        }else{
+          throw new Error('Unexpected sync id: '+id);
+        }
+      }
+    }finally{
+      try{await this._tx(CLSE,lid,rid)}catch{}
+    }
+  }
+
+  async getDeviceInfo(){
+    // Single shell invocation with delimiters to avoid multiple stream opens
+    const SEP='__QWADB__';
+    const script=[
+      'dumpsys battery',
+      'echo '+SEP,
+      'getprop ro.product.model',
+      'echo '+SEP,
+      'getprop ro.serialno',
+      'echo '+SEP,
+      'getprop ro.build.version.release',
+      'echo '+SEP,
+      'getprop ro.build.display.id',
+      'echo '+SEP,
+      'v=$(getprop ro.vros.build.version 2>/dev/null); [ -z "$v" ] && v=$(getprop ro.build.branch 2>/dev/null | grep -oP "v\\d+" | head -1 | tr -d v); echo "$v"',
+      'echo '+SEP,
+      'df /data',
+    ].join('; ');
+
+    const raw=await this.shell(script);
+    const parts=raw.split(SEP).map(s=>s.trim());
+    const [batRaw='',modRaw='',serRaw='',verRaw='',bldRaw='',qverRaw='',dfRaw=''] = parts;
+
+    const bat={};
+    for(const l of batRaw.split('\n')){const m=l.match(/^\s*(level|status|temperature|plugged):\s*(.+)/i);if(m)bat[m[1].toLowerCase()]=m[2].trim()}
+    const lvl=parseInt(bat.level,10)||0;
+    const smap={'1':'Unknown','2':'Charging','3':'Discharging','4':'Not charging','5':'Full'};
+    const bstat=smap[bat.status]||bat.status||'Unknown';
+
+    let sUsed=0,sTotal=0;
+    const dl=dfRaw.trim().split('\n');
+    if(dl.length>=2){const p=dl[1].split(/\s+/);if(p.length>=4){sTotal=parseInt(p[1],10)*1024;sUsed=parseInt(p[2],10)*1024}}
+
+    return{
+      batteryLevel:lvl,batteryStatus:bstat,
+      batteryTemp:bat.temperature?(parseInt(bat.temperature,10)/10).toFixed(1)+'°C':null,
+      model:modRaw.trim(),serial:serRaw.trim(),
+      version:verRaw.trim(),build:bldRaw.trim(),
+      questVer:qverRaw.trim()?'v'+qverRaw.trim():'',
+      storageUsed:sUsed,storageTotal:sTotal
+    };
+  }
+
+  // -- handshake --
+
+  async _handshake(){
+    const keys=await getOrCreateKeys();
+    // Clear read buffer — discard any leftover bytes from a previous session
+    this._buf=new Uint8Array(0);
+    await this._tx(CNXN,AVER,MAXP,'host::\0');
+    let msg=await this._rx();
+    // Skip stale messages (WRTE, CLSE, OKAY) from previous session until CNXN or AUTH
+    for(let i=0;i<50&&msg.c!==CNXN&&msg.c!==AUTH;i++)msg=await this._rx();
+    if(msg.c===CNXN){this._mp=msg.a1;this._banner=DEC.decode(msg.d);return}
+    if(msg.c!==AUTH||msg.a0!==AUTH_TOKEN)throw new Error('Unexpected: 0x'+msg.c.toString(16));
+    const sig=signToken(keys.priv,msg.d);
+    await this._tx(AUTH,AUTH_SIG,0,sig);
+    msg=await this._rx();
+    if(msg.c===CNXN){this._mp=msg.a1;this._banner=DEC.decode(msg.d);return}
+    if(msg.c===AUTH&&msg.a0===AUTH_TOKEN){
+      await this._tx(AUTH,AUTH_PUB,0,pubKeyPayload(keys.pub));
+      msg=await this._rx();
+      if(msg.c===CNXN){this._mp=msg.a1;this._banner=DEC.decode(msg.d);return}
+      throw new Error('Device rejected the connection – accept the prompt on the headset (\'Always Allow\')');
+    }
+    throw new Error('Authentication failed');
+  }
+
+  // -- message framing --
+
+  async _tx(cmd,a0,a1,data=null){
+    let pl=new Uint8Array(0);
+    if(data!=null)pl=(data instanceof Uint8Array)?data:ENC.encode(data);
+    const h=new ArrayBuffer(24),v=new DataView(h);
+    v.setUint32(0,cmd,true);v.setUint32(4,a0,true);v.setUint32(8,a1,true);
+    v.setUint32(12,pl.length,true);
+    let ck=0;for(let i=0;i<pl.length;i++)ck+=pl[i];
+    v.setUint32(16,ck>>>0,true);v.setUint32(20,(cmd^0xFFFFFFFF)>>>0,true);
+    await this._usb.transferOut(this._out,h);
+    if(pl.length>0)await this._usb.transferOut(this._out,pl);
+  }
+
+  // Buffered read: USB bulk transfers don't align with ADB messages.
+  // A single transferIn may return header+data, or partial header, etc.
+  async _readBytes(n){
+    while(this._buf.length<n){
+      const r=await this._usb.transferIn(this._in,Math.max(n-this._buf.length,16384));
+      if(r.status!=='ok')throw new Error('USB IN: '+r.status);
+      const chunk=new Uint8Array(r.data.buffer,r.data.byteOffset,r.data.byteLength);
+      if(chunk.length===0)throw new Error('USB IN: zero-length read');
+      const merged=new Uint8Array(this._buf.length+chunk.length);
+      merged.set(this._buf);merged.set(chunk,this._buf.length);
+      this._buf=merged;
+    }
+    const out=this._buf.slice(0,n);
+    this._buf=this._buf.slice(n);
+    return out;
+  }
+
+  async _rx(){
+    const hdr=await this._readBytes(24);
+    const hv=new DataView(hdr.buffer,hdr.byteOffset,24);
+    const c=hv.getUint32(0,true),a0=hv.getUint32(4,true),a1=hv.getUint32(8,true),dl=hv.getUint32(12,true);
+    let d=new Uint8Array(0);
+    if(dl>0)d=await this._readBytes(dl);
+    return{c,a0,a1,d};
+  }
+
+  _unplug=e=>{if(e.device===this._usb){this._ok=false;this.ondisconnect?.()}};
+
+  async _cleanup(){this._ok=false;this._buf=new Uint8Array(0);try{await this._usb?.close()}catch{}this._usb=null;this._in=0;this._out=0}
+}
+
+/* ================================================================
+   3.  UI
+   ================================================================ */
+
+const $=s=>document.querySelector(s);
+const el={
+  dot:$('#dot'),stxt:$('#stxt'),
+  bc:$('#btn-c'),bd:$('#btn-d'),br:$('#btn-r'),
+  cb:$('#con-box'),ct:$('#con-txt'),
+  info:$('#info'),nousb:$('#no-webusb'),
+  eb:$('#err-box'),et:$('#err-txt'),be:$('#btn-e'),
+  bv:$('#bv'),bs:$('#bs'),bb:$('#bb'),
+  sv:$('#sv'),sd:$('#sd'),sb:$('#sb'),
+  dm:$('#dm'),ds:$('#ds'),dv:$('#dv'),
+  appsSection:$('#apps-section'),appsList:$('#app-list'),
+  appsCount:$('#apps-count'),appsSearch:$('#apps-search'),
+  appsSort:$('#apps-sort'),btnApps:$('#btn-apps'),
+  dropOverlay:$('#drop-overlay'),
+  installBox:$('#install-box'),installStep:$('#install-step'),
+  installBar:$('#install-bar'),installLog:$('#install-log'),
+  speedInfo:$('#speed-info'),
+};
+
+const adb=new AdbDevice();
+let tmr=null;
+let snFull='',snHidden=true;
+function toggleSN(){
+  const tn=el.ds.childNodes[0];
+  if(!tn||!snFull)return;
+  snHidden=!snHidden;
+  tn.textContent=snHidden?'S/N ••••••':snFull;
+}
+
+function setStatus(s,t){el.dot.className='dot '+s;el.stxt.textContent=t}
+function fmtB(b){if(!b)return'0 B';const u=['B','KB','MB','GB','TB'];const i=Math.floor(Math.log(b)/Math.log(1024));return(b/1024**i).toFixed(i>1?1:0)+' '+u[i]}
+function showErr(m){el.et.textContent=m;el.eb.classList.remove('hidden')}
+function hideErr(){el.eb.classList.add('hidden')}
+function showCon(t='Connecting…'){el.ct.textContent=t;el.cb.classList.remove('hidden')}
+function hideCon(){el.cb.classList.add('hidden')}
+function setUI(c){
+  el.bc.disabled=c;el.bd.disabled=!c;el.br.disabled=!c;
+  el.info.classList.toggle('hidden',!c);
+  el.appsSection.classList.toggle('hidden',!c);
+  if(!c){setStatus('off','Disconnected');clearTimeout(tmr);tmr=null;allApps=[]}
+}
+
+async function refresh(){
+  try{
+    const i=await adb.getDeviceInfo();
+    // Skip UI update if response appears corrupt/empty (stale data)
+    if(!i.model && i.batteryLevel<=0 && i.storageTotal<=0){
+      console.warn('refresh: empty data, keeping current UI');
+      return;
+    }
+    el.bv.textContent=i.batteryLevel+'%';
+    el.bs.textContent=i.batteryStatus+(i.batteryTemp?' · '+i.batteryTemp:'');
+    el.bb.style.width=i.batteryLevel+'%';
+    el.bb.className='bar-fill'+(i.batteryLevel<=15?' low':i.batteryLevel<=40?' mid':'');
+
+    if(i.storageTotal>0){
+      const pct=Math.round(i.storageUsed/i.storageTotal*100);
+      el.sv.textContent=pct+'% used';
+      el.sd.textContent=fmtB(i.storageUsed)+' / '+fmtB(i.storageTotal)+' · '+fmtB(i.storageTotal-i.storageUsed)+' free';
+      el.sb.style.width=pct+'%';
+      // Color storage bar by usage: teal → green → amber → orange → red
+      el.sb.style.background=pct<40?'#2dd4bf':pct<60?'#34d399':pct<75?'#fbbf24':pct<90?'#fb923c':'#ef4444';
+    }else{el.sv.textContent='—';el.sd.textContent='';el.sb.style.width='0'}
+    el.dm.textContent=i.model||'—';
+    el.dv.textContent=i.questVer||('Android '+(i.version||'?'));
+    if(i.serial){snFull='S/N '+i.serial;snHidden=true;el.ds.childNodes[0]&&el.ds.childNodes[0].nodeType===3?el.ds.childNodes[0].textContent='S/N ••••••':el.ds.insertBefore(document.createTextNode('S/N ••••••'),el.ds.firstChild);document.getElementById('sn-toggle').style.display=''}else{el.ds.childNodes[0]&&el.ds.childNodes[0].nodeType===3?el.ds.childNodes[0].textContent='':0;document.getElementById('sn-toggle').style.display='none'}
+  }catch(e){console.warn('refresh failed',e)}
+}
+
+/* ── App list ──────────────────────────────────────────────── */
+
+// Package → display name lookup, loaded from external JSON file.
+// When moving to a server, just change the fetch URL.
+const PKG_NAMES=new Map();
+fetch('package_name_lookup.json').then(r=>r.ok?r.json():null).then(data=>{
+  if(data)for(const[k,v]of Object.entries(data))PKG_NAMES.set(k,v);
+}).catch(()=>{try{const x=new XMLHttpRequest();x.open('GET','package_name_lookup.json',false);x.send();if(x.responseText){const d=JSON.parse(x.responseText);for(const[k,v]of Object.entries(d))PKG_NAMES.set(k,v)}}catch{}});
+
+function pkgToName(pkg){
+  if(PKG_NAMES.has(pkg))return PKG_NAMES.get(pkg);
+  const parts=pkg.split('.');
+  let seg=parts[parts.length-1];
+  const generic=new Set(['app','main','quest','vr','android','mobile','client']);
+  if(generic.has(seg.toLowerCase())&&parts.length>2) seg=parts[parts.length-2];
+  seg=seg.replace(/[_-]?(QuestStore|Quest|VR|Android|Mobile|App|Free|Pro|Full)$/gi,'');
+  seg=seg.replace(/([a-z])([A-Z])/g,'$1 $2').replace(/[_-]+/g,' ');
+  return seg.split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ').trim()||pkg;
+}
+
+let allApps=[];
+const SYS_PREFIX=['com.oculus.','com.meta.','com.facebook.','com.instagram.','com.whatsapp.','android.','com.android.','com.qualcomm.','com.qti.'];
+function isSystemPkg(p){return SYS_PREFIX.some(s=>p.startsWith(s))}
+
+// Fetch info for a single package — used after install to avoid full reload
+async function fetchAppInfo(pkg){
+  const script=
+    'p="'+pkg+'"; '+
+    'info=$(dumpsys package "$p" 2>/dev/null | grep -m2 -E "versionName=|applicationLabel="); '+
+    'v=$(echo "$info" | grep versionName= | head -1 | sed "s/.*versionName=//" | tr -d " \\r"); '+
+    'n=$(echo "$info" | grep applicationLabel= | head -1 | sed "s/.*applicationLabel=//" | tr -d "\\r"); '+
+    'a=$(pm path "$p" 2>/dev/null | head -1); a=${a#package:}; '+
+    'i=0; [ -n "$a" ] && i=$(du -sk "$(dirname "$a")" 2>/dev/null | cut -f1); '+
+    'dd=$(du -sk /data/data/$p 2>/dev/null | cut -f1); '+
+    'ed=$(du -sk /sdcard/Android/data/$p 2>/dev/null | cut -f1); '+
+    'o=$(du -sk /sdcard/Android/obb/$p 2>/dev/null | cut -f1); '+
+    'md=$(du -sk /sdcard/Android/media/$p 2>/dev/null | cut -f1); '+
+    'echo "##${p}##${v}##${n}##${i:-0}##${dd:-0}##${ed:-0}##${o:-0}##${md:-0}"';
+  const raw=await adb.shell(script);
+  const m=raw.match(/^##(.+?)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)$/m);
+  if(!m)return null;
+  const installKB=parseInt(m[4],10)||0;
+  const intDataKB=parseInt(m[5],10)||0;
+  const extDataKB=parseInt(m[6],10)||0;
+  const obbKB=parseInt(m[7],10)||0;
+  const mediaKB=parseInt(m[8],10)||0;
+  return{
+    pkg:m[1], version:m[2]||'\u2014',
+    name:m[3]||pkgToName(m[1]),
+    sizeBytes:(installKB+intDataKB+extDataKB+obbKB+mediaKB)*1024
+  };
+}
+
+async function loadApps(){
+
+  el.appsList.innerHTML='<div class="notice"><div class="spinner"></div><p>Scanning packages…</p></div>';
+  el.appsCount.textContent='';
+  try{
+    // Phase 1: get package count quickly
+    const pkgListRaw=await adb.shell('pm list packages -3 2>/dev/null | sed "s/^package://" | sort -u');
+    const pkgList=pkgListRaw.split('\n').map(s=>s.trim()).filter(s=>s&&!isSystemPkg(s));
+    const total=pkgList.length;
+    if(!total){
+      el.appsList.innerHTML='<p style="text-align:center;color:var(--dim);padding:1rem">No user apps found.</p>';
+      return;
+    }
+
+    // Phase 2: show progress bar
+    el.appsList.innerHTML=
+      '<div class="notice" style="width:100%;max-width:340px;margin:0 auto">'+
+        '<p id="apps-progress-label" style="margin:0 0 .4rem;font-size:.85rem;color:var(--dim)">Loading 0 / '+total+' apps…</p>'+
+        '<div class="bar-track"><div class="bar-fill" id="apps-progress-bar" style="width:0;transition:width .3s ease"></div></div>'+
+      '</div>';
+    const progLabel=document.getElementById('apps-progress-label');
+    const progBar=document.getElementById('apps-progress-bar');
+
+    // Phase 3: stream per-package data with live progress
+    const script=
+      'pkgs=$(pm list packages -3 2>/dev/null | sed "s/^package://" | sort -u); '+
+      'for p in $pkgs; do '+
+        'info=$(dumpsys package "$p" 2>/dev/null | grep -m2 -E "versionName=|applicationLabel="); '+
+        'v=$(echo "$info" | grep versionName= | head -1 | sed "s/.*versionName=//" | tr -d " \\r"); '+
+        'n=$(echo "$info" | grep applicationLabel= | head -1 | sed "s/.*applicationLabel=//" | tr -d "\\r"); '+
+        'a=$(pm path "$p" 2>/dev/null | head -1); a=${a#package:}; '+
+        'i=0; [ -n "$a" ] && i=$(du -sk "$(dirname "$a")" 2>/dev/null | cut -f1); '+
+        'dd=$(du -sk /data/data/$p 2>/dev/null | cut -f1); '+
+        'ed=$(du -sk /sdcard/Android/data/$p 2>/dev/null | cut -f1); '+
+        'o=$(du -sk /sdcard/Android/obb/$p 2>/dev/null | cut -f1); '+
+        'md=$(du -sk /sdcard/Android/media/$p 2>/dev/null | cut -f1); '+
+        'echo "##${p}##${v}##${n}##${i:-0}##${dd:-0}##${ed:-0}##${o:-0}##${md:-0}"; '+
+      'done; echo "##__DONE__##"';
+
+    let count=0, lineBuf='';
+    const all=[];
+    const addedPkgs=new Set();
+
+    const parseLine=(line)=>{
+      const m=line.match(/^##(.+?)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)$/);
+      if(m&&m[1]!=='__DONE__'&&!addedPkgs.has(m[1])&&!isSystemPkg(m[1])){
+        addedPkgs.add(m[1]);
+        const installKB=parseInt(m[4],10)||0;
+        const intDataKB=parseInt(m[5],10)||0;
+        const extDataKB=parseInt(m[6],10)||0;
+        const obbKB=parseInt(m[7],10)||0;
+        const mediaKB=parseInt(m[8],10)||0;
+        all.push({
+          pkg:m[1],
+          version:m[2]||'\u2014',
+          name:m[3]||'',
+          sizeBytes:(installKB+intDataKB+extDataKB+obbKB+mediaKB)*1024
+        });
+      }
+      if(m) count++;
+    };
+
+    await adb.shell(script, (chunk)=>{
+      lineBuf+=chunk;
+      const lines=lineBuf.split('\n');
+      lineBuf=lines.pop();
+      for(const ln of lines) parseLine(ln);
+      const pct=Math.min(100,Math.round(count/total*100));
+      progBar.style.width=pct+'%';
+      progLabel.textContent='Loading '+count+' / '+total+' apps…';
+    });
+    // Parse any remaining data in buffer
+    if(lineBuf) parseLine(lineBuf);
+
+    if(!all.length){
+      el.appsList.innerHTML='<p style="text-align:center;color:var(--dim);padding:1rem">No user apps found.</p>';
+      return;
+    }
+
+    for(const a of all){
+      if(!a.name) a.name=pkgToName(a.pkg);
+    }
+
+    allApps=all;
+    sortAndRender();
+  }catch(e){
+    console.error('loadApps failed',e);
+    el.appsList.innerHTML='';
+    showErr('Failed to load apps: '+e.message);
+  }
+}
+
+function sortAndRender(){
+  const s=el.appsSort.value;
+  if(s==='size') allApps.sort((a,b)=>b.sizeBytes-a.sizeBytes);
+  else allApps.sort((a,b)=>(a.name||a.pkg).localeCompare(b.name||b.pkg));
+  renderApps();
+}
+
+function renderApps(){
+  const q=el.appsSearch.value.toLowerCase();
+  const filtered=allApps.filter(a=>{
+    if(q&&!(a.pkg.toLowerCase().includes(q)||(a.name&&a.name.toLowerCase().includes(q))))return false;
+    return true;
+  });
+
+  el.appsCount.textContent=filtered.length+' app'+(filtered.length!==1?'s':'');
+
+  if(filtered.length===0){
+    el.appsList.innerHTML='<p style="text-align:center;color:var(--dim);padding:1rem">No apps match.</p>';
+    return;
+  }
+
+  el.appsList.innerHTML=filtered.map(a=>{
+    const size=a.sizeBytes?fmtB(a.sizeBytes):'—';
+    const displayName=a.name||a.pkg;
+    return '<div class="app-row" data-pkg="'+a.pkg.replace(/"/g,'&quot;')+'">' +
+      '<img class="app-thumb" src="thumbnails/'+encodeURIComponent(a.pkg)+'.jpg" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=app-thumb-placeholder>\ud83c\udfae</div>\'">' +
+      '<div class="app-name"><div class="pkg">'+esc(displayName)+'</div>' +
+      '<div class="label">'+esc(a.pkg)+'</div></div>' +
+      '<div class="app-meta">v'+esc(a.version)+'<br>'+size+'</div>' +
+      '<button class="btn sm s" title="Pulls App to PC" onclick="backupApp(this,\''+a.pkg.replace(/'/g,"\\'")+'\')">Export</button>' +
+      '<button class="btn sm d" onclick="uninstallApp(this,\''+a.pkg.replace(/'/g,"\\'")+'\')">Uninstall</button>' +
+      '</div>';
+  }).join('');
+}
+
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+window.uninstallApp=async function(btn,pkg){
+  if(!confirm('Uninstall '+pkg+'?'))return;
+  const row=btn.closest('.app-row');
+  row.classList.add('uninstalling');
+  btn.textContent='Removing…';
+  try{
+    const out=await adb.shell('pm uninstall "'+pkg+'" 2>&1; echo __OK__');
+    if(out.includes('Success')){
+      row.remove();
+      allApps=allApps.filter(a=>a.pkg!==pkg);
+      el.appsCount.textContent=allApps.length+' app'+(allApps.length!==1?'s':'');
+      refresh();
+    }else{
+      const reason=out.replace('__OK__','').replace(/[\r\n]+/g,' ').trim();
+      showErr('Uninstall failed'+(reason?': '+reason:''));
+      row.classList.remove('uninstalling');
+      btn.textContent='Uninstall';
+    }
+  }catch(e){
+    showErr('Uninstall error: '+e.message);
+    row.classList.remove('uninstalling');
+    btn.textContent='Uninstall';
+  }
+};
+
+function scheduleRefresh(){clearTimeout(tmr);tmr=setTimeout(async()=>{await refresh();if(adb.connected)scheduleRefresh()},30000)}
+
+const ADB_FILTER={classCode:0xFF,subclassCode:0x42,protocolCode:0x01};
+
+async function connectDev(usb){
+  hideErr();showCon('Connecting — if first time, accept the prompt on your headset (\'Always Allow\')\n\nIf you aren\'t seeing any prompt:\n- Ensure developer mode is enabled on your headset\n- Ensure your USB cable supports data\n\nYou can also try different USB ports and cables, and try restarting your headset.');setStatus('wait','Connecting…');
+  try{
+    await adb.connect(usb);
+    setStatus('on','Connected');setUI(true);hideCon();
+    if(usb.serialNumber)localStorage.setItem('quest-serial',usb.serialNumber);
+    await refresh();
+    await loadApps();
+    scheduleRefresh();
+  }catch(e){hideCon();setUI(false);showErr(e.message||'Connection failed');console.error(e)}
+}
+
+async function promptConnect(){
+  try{const d=await navigator.usb.requestDevice({filters:[ADB_FILTER]});await connectDev(d)}
+  catch(e){if(e.name!=='NotFoundError')showErr(e.message)}
+}
+
+async function doDisconnect(){clearTimeout(tmr);tmr=null;await adb.disconnect();setUI(false)}
+
+async function autoReconnect(){
+  if(!navigator.usb)return;
+  const devs=await navigator.usb.getDevices();if(!devs.length)return;
+  const saved=localStorage.getItem('quest-serial');
+  const target=devs.find(d=>d.serialNumber===saved)||devs[0];
+  // On page reload the USB device may be in a stale state — retry silently
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      showCon('Connecting…');setStatus('wait','Connecting…');
+      await adb.connect(target);
+      setStatus('on','Connected');setUI(true);hideCon();
+      if(target.serialNumber)localStorage.setItem('quest-serial',target.serialNumber);
+      await refresh();
+      await loadApps();
+      scheduleRefresh();
+      return;
+    }catch(e){
+      console.warn('autoReconnect attempt '+(attempt+1)+':',e.message);
+      await adb.disconnect().catch(()=>{});
+      if(attempt<2)await new Promise(r=>setTimeout(r,600));
+    }
+  }
+  // All retries failed — silently fall back to manual connect
+  setUI(false);hideCon();
+}
+
+adb.ondisconnect=()=>{setUI(false);setStatus('off','Device disconnected')};
+el.bc.addEventListener('click',promptConnect);
+el.bd.addEventListener('click',doDisconnect);
+el.br.addEventListener('click',refresh);
+el.be.addEventListener('click',hideErr);
+el.btnApps.addEventListener('click',loadApps);
+el.appsSearch.addEventListener('input',renderApps);
+el.appsSort.addEventListener('change',sortAndRender);
+
+/* ── PC Library (File System Access API) ──────────────────── */
+
+const libEl={
+  section:$('#pc-library'),
+  list:$('#lib-list'),
+  count:$('#lib-count'),
+  search:$('#lib-search'),
+  btnFolder:$('#btn-lib-folder'),
+  btnRescan:$('#btn-lib-rescan'),
+  sort:$('#lib-sort'),
+};
+
+let libApps=[];
+let libDirHandle=null;
+let libSortBy='name';
+
+// Show PC Library section only if File System Access API is supported
+if(window.showDirectoryPicker){
+  libEl.section.classList.remove('hidden');
+}
+
+// ── Scan cache (localStorage) ────────────────────────────────
+function libCacheKey(){return 'lib_cache_'+libDirHandle.name}
+function loadLibCache(){try{return JSON.parse(localStorage.getItem(libCacheKey()))||{}}catch{return {}}}
+function saveLibCache(c){try{localStorage.setItem(libCacheKey(),JSON.stringify(c))}catch{}}
+function apkFingerprint(f){return f.name+'|'+f.lastModified+'|'+f.size}
+
+function cleanFolderName(name){
+  // "Blade & Sorcery- Nomad v251210002+1.1.2 -VRP" -> "Blade & Sorcery- Nomad"
+  let idx=name.indexOf(' v');
+  while(idx>=0){
+    if(idx+2<name.length&&/\d/.test(name[idx+2])){
+      const c=name.substring(0,idx).replace(/[\s\-_]+$/,'');
+      if(c)return c;
+    }
+    idx=name.indexOf(' v',idx+1);
+  }
+  return name.replace(/[\s\-_]+$/,'')||name;
+}
+
+libEl.btnFolder.addEventListener('click',async()=>{
+  try{
+    libDirHandle=await window.showDirectoryPicker({mode:'read'});
+    await scanLibrary();
+  }catch(e){
+    if(e.name!=='AbortError')showErr('Folder access error: '+e.message);
+  }
+});
+
+libEl.btnRescan.addEventListener('click',async()=>{
+  if(libDirHandle)await scanLibrary();
+});
+
+libEl.search.addEventListener('input',renderLibrary);
+libEl.sort.addEventListener('change',()=>{libSortBy=libEl.sort.value;sortAndRenderLibrary()});
+
+async function scanLibrary(){
+  libEl.list.innerHTML='<div class="notice"><div class="spinner"></div><p>Scanning folder\u2026</p></div>';
+  libEl.count.textContent='';
+  libEl.btnRescan.classList.add('hidden');
+  libEl.search.classList.add('hidden');
+  libEl.sort.classList.add('hidden');
+
+  const files=[];
+  await walkDirTree(libDirHandle,'',files);
+  const apps=groupIntoApps(files);
+
+  // Load scan cache
+  const cache=loadLibCache();
+  const newCache={};
+  let cached=0,scanned=0;
+
+  const BATCH=6;
+  for(let i=0;i<apps.length;i+=BATCH){
+    libEl.list.innerHTML='<div class="notice"><div class="spinner"></div><p>Reading app '+(i+1)+' of '+apps.length+'\u2026</p></div>';
+    await Promise.all(apps.slice(i,i+BATCH).map(async app=>{
+      try{
+        const apkFile=await app.apkHandle.getFile();
+        const fp=apkFingerprint(apkFile);
+        app.lastModified=apkFile.lastModified;
+
+        const ce=cache[app.folderName];
+        if(ce&&ce.fingerprint===fp&&ce.pkg){
+          app.pkg=ce.pkg;
+          app.versionName=ce.versionName||'';
+          app.versionCode=ce.versionCode||0;
+          app.lastModified=ce.lastModified||apkFile.lastModified;
+          app.totalSize=ce.totalSize||0;
+          cached++;
+        }else{
+          const meta=await parseApkMetaEfficient(app.apkHandle);
+          if(meta){
+            app.pkg=meta.pkg||app.pkg;
+            app.versionName=meta.versionName||'';
+            app.versionCode=meta.versionCode||0;
+          }
+          scanned++;
+        }
+
+        // Compute total size if not cached
+        if(!app.totalSize){
+          let sz=0;
+          for(const h of app.allHandles){try{const f=await h.getFile();sz+=f.size}catch{}}
+          app.totalSize=sz;
+        }
+
+        newCache[app.folderName]={
+          fingerprint:fp,
+          pkg:app.pkg,
+          versionName:app.versionName,
+          versionCode:app.versionCode,
+          lastModified:app.lastModified,
+          totalSize:app.totalSize,
+          apkFileName:apkFile.name
+        };
+      }catch(e){console.warn('Scan fail:',app.folderName,e)}
+    }));
+  }
+
+  saveLibCache(newCache);
+  console.log('Library scan: '+cached+' cached, '+scanned+' parsed');
+
+  libApps=apps;
+  sortAndRenderLibrary();
+  libEl.btnRescan.classList.remove('hidden');
+  libEl.search.classList.remove('hidden');
+  libEl.sort.classList.remove('hidden');
+}
+
+async function walkDirTree(dirHandle,path,out){
+  try{
+    for await(const entry of dirHandle.values()){
+      try{
+        const ep=path?path+'/'+entry.name:entry.name;
+        if(entry.kind==='file') out.push({handle:entry,path:ep,name:entry.name});
+        else if(entry.kind==='directory') await walkDirTree(entry,ep,out);
+      }catch(e){console.warn('Skip:',entry.name,e)}
+    }
+  }catch(e){console.warn('Cannot read:',path,e)}
+}
+
+function groupIntoApps(files){
+  const groups=new Map();
+  for(const f of files){
+    const slash=f.path.indexOf('/');
+    const key=slash>0?f.path.substring(0,slash):f.name;
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(f);
+  }
+  const apps=[];
+  for(const[key,gf]of groups){
+    const apks=gf.filter(f=>f.name.toLowerCase().endsWith('.apk'));
+    if(!apks.length)continue;
+    const mainApk=apks[0];
+    const obbs=gf.filter(f=>f.name.toLowerCase().endsWith('.obb'));
+    const base=mainApk.name.replace(/\.apk$/i,'');
+    const pkg=/^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*){2,}$/.test(base)?base:base;
+    apps.push({
+      apkHandle:mainApk.handle,
+      apkFileName:mainApk.name,
+      obbHandles:obbs.map(o=>o.handle),
+      allHandles:gf.map(f=>f.handle),
+      folderName:key,
+      pkg,
+      versionName:'',
+      versionCode:0,
+      totalSize:0,
+      lastModified:0,
+      displayName(){return pkgToName(this.pkg)||cleanFolderName(this.folderName)},
+    });
+  }
+  return apps;
+}
+
+async function parseApkMetaEfficient(fileHandle){
+  const file=await fileHandle.getFile();
+  const tailSize=Math.min(file.size,131072);
+  const tailBuf=await file.slice(file.size-tailSize).arrayBuffer();
+  const tail=new DataView(tailBuf);
+  let eocdOff=-1;
+  for(let i=tailBuf.byteLength-22;i>=0;i--){
+    if(tail.getUint32(i,true)===0x06054b50){eocdOff=i;break;}
+  }
+  if(eocdOff<0)return null;
+  const cdSize=tail.getUint32(eocdOff+12,true);
+  const cdOffset=tail.getUint32(eocdOff+16,true);
+  const cdInTail=cdOffset-(file.size-tailSize);
+  let cdBuf;
+  if(cdInTail>=0&&cdInTail+cdSize<=tailBuf.byteLength){
+    cdBuf=tailBuf.slice(cdInTail,cdInTail+cdSize);
+  }else{
+    cdBuf=await file.slice(cdOffset,cdOffset+cdSize).arrayBuffer();
+  }
+  const cdView=new DataView(cdBuf);
+  const dec=new TextDecoder();
+  let pos=0;
+  while(pos<cdBuf.byteLength){
+    if(cdView.getUint32(pos,true)!==0x02014b50)break;
+    const nameLen=cdView.getUint16(pos+28,true);
+    const extraLen=cdView.getUint16(pos+30,true);
+    const commentLen=cdView.getUint16(pos+32,true);
+    const compSize=cdView.getUint32(pos+20,true);
+    const localOff=cdView.getUint32(pos+42,true);
+    const name=dec.decode(new Uint8Array(cdBuf,pos+46,nameLen));
+    if(name==='AndroidManifest.xml'){
+      const compMethod=cdView.getUint16(pos+10,true);
+      const lhBuf=await file.slice(localOff,localOff+30).arrayBuffer();
+      const lh=new DataView(lhBuf);
+      const lNameLen=lh.getUint16(26,true);
+      const lExtraLen=lh.getUint16(28,true);
+      const dataStart=localOff+30+lNameLen+lExtraLen;
+      const rawBuf=await file.slice(dataStart,dataStart+compSize).arrayBuffer();
+      let xmlData;
+      if(compMethod===8){
+        try{
+          const ds=new DecompressionStream('deflate-raw');
+          const writer=ds.writable.getWriter();
+          writer.write(new Uint8Array(rawBuf));writer.close();
+          const reader=ds.readable.getReader();
+          const chunks=[];let total=0;
+          while(true){const{done,value}=await reader.read();if(done)break;chunks.push(value);total+=value.length;}
+          xmlData=new Uint8Array(total);
+          let off2=0;for(const c of chunks){xmlData.set(c,off2);off2+=c.length;}
+        }catch(e){console.warn('Deflate failed:',e);return null;}
+      }else{
+        xmlData=new Uint8Array(rawBuf);
+      }
+      return parseBinaryXmlManifest(xmlData);
+    }
+    pos+=46+nameLen+extraLen+commentLen;
+  }
+  return null;
+}
+
+function parseBinaryXmlManifest(data){
+  const view=new DataView(data.buffer,data.byteOffset,data.byteLength);
+  if(data.length<8)return null;
+
+  const strPoolOffset=8;
+  if(view.getUint16(strPoolOffset,true)!==0x0001)return null;
+  const strCount=view.getUint32(strPoolOffset+8,true);
+  const strFlags=view.getUint32(strPoolOffset+16,true);
+  const isUTF8=(strFlags&(1<<8))!==0;
+  const strDataOffset=view.getUint32(strPoolOffset+20,true);
+  const strPoolHeaderSize=view.getUint32(strPoolOffset+4,true);
+
+  const offsets=[];
+  for(let i=0;i<strCount;i++){
+    offsets.push(view.getUint32(strPoolOffset+28+i*4,true));
+  }
+
+  const absStrData=strPoolOffset+strDataOffset;
+  function readStr(idx){
+    if(idx<0||idx>=strCount)return'';
+    const off=absStrData+offsets[idx];
+    if(off>=data.length)return'';
+    if(isUTF8){
+      let p=off;
+      let charLen=data[p++]; if(charLen&0x80)p++;
+      let byteLen=data[p++]; if(byteLen&0x80){byteLen=((byteLen&0x7F)<<8)|data[p++];}
+      return new TextDecoder().decode(data.slice(p,p+byteLen));
+    }else{
+      let p=off;
+      let len=view.getUint16(p,true);p+=2;
+      if(len&0x8000){len=((len&0x7FFF)<<16)|view.getUint16(p,true);p+=2;}
+      let s='';
+      for(let i=0;i<len&&p+1<data.length;i++,p+=2)s+=String.fromCharCode(view.getUint16(p,true));
+      return s;
+    }
+  }
+
+  // Parse resource ID map to match attributes by Android resource ID
+  const resIds=[];
+  let pkg='',versionName='',versionCode=0;
+  let pos=strPoolOffset+strPoolHeaderSize;
+
+  if(pos<data.length&&view.getUint16(pos,true)===0x0180){
+    const resMapSize=view.getUint32(pos+4,true);
+    for(let i=0;i<(resMapSize-8)/4;i++) resIds.push(view.getUint32(pos+8+i*4,true));
+    pos+=resMapSize;
+  }
+
+  while(pos+16<data.length){
+    const chunkType=view.getUint16(pos,true);
+    const cSize=view.getUint32(pos+4,true);
+    if(cSize<8||pos+cSize>data.length)break;
+    if(chunkType===0x0102){
+      const attrCount=view.getUint16(pos+28,true);
+      const tagName=readStr(view.getInt32(pos+20,true));
+      if(tagName==='manifest'){
+        for(let i=0;i<attrCount;i++){
+          const aOff=pos+36+i*20;
+          if(aOff+20>data.length)break;
+          const aNameIdx=view.getInt32(aOff+4,true);
+          const aName=readStr(aNameIdx);
+          const aResId=aNameIdx>=0&&aNameIdx<resIds.length?resIds[aNameIdx]:0;
+          const rawVal=view.getInt32(aOff+8,true);
+          const typedVal=view.getUint32(aOff+16,true);
+          const dataType=(aOff+15<data.length)?view.getUint8(aOff+15):0;
+          if(aName==='package'||aResId===0x00000000&&aName==='package')pkg=rawVal>=0?readStr(rawVal):'';
+          else if(aName==='versionCode'||aResId===0x0101021b)versionCode=typedVal;
+          else if(aName==='versionName'||aResId===0x0101021c){
+            if(dataType===0x03&&rawVal>=0)versionName=readStr(rawVal);
+            else if(rawVal>=0&&readStr(rawVal))versionName=readStr(rawVal);
+            else versionName=String(typedVal);
+          }
+        }
+        break;
+      }
+    }
+    pos+=cSize;
+  }
+
+  if(!pkg)return null;
+  return{pkg,versionName,versionCode};
+}
+
+function compareVersions(localVer,deviceVer){
+  if(!deviceVer)return 'new-app';
+  if(!localVer)return 'same';
+  const lParts=localVer.split(/[.\-_]/).map(Number);
+  const dParts=deviceVer.split(/[.\-_]/).map(Number);
+  const len=Math.max(lParts.length,dParts.length);
+  for(let i=0;i<len;i++){
+    const l=lParts[i]||0,d=dParts[i]||0;
+    if(l>d)return 'newer';
+    if(l<d)return 'older';
+  }
+  return 'same';
+}
+
+function sortAndRenderLibrary(){
+  if(libSortBy==='size') libApps.sort((a,b)=>b.totalSize-a.totalSize);
+  else if(libSortBy==='date') libApps.sort((a,b)=>(b.lastModified||0)-(a.lastModified||0));
+  else libApps.sort((a,b)=>a.displayName().localeCompare(b.displayName()));
+  renderLibrary();
+}
+
+function renderLibrary(){
+  const q=(libEl.search.value||'').toLowerCase();
+  const filtered=libApps.filter(a=>{
+    if(!q)return true;
+    return a.apkFileName.toLowerCase().includes(q)||
+           a.pkg.toLowerCase().includes(q)||
+           a.displayName().toLowerCase().includes(q)||
+           a.folderName.toLowerCase().includes(q);
+  });
+
+  libEl.count.textContent=filtered.length+' app'+(filtered.length!==1?'s':'');
+
+  if(!filtered.length){
+    libEl.list.innerHTML='<p style="text-align:center;color:var(--dim);padding:1rem">'+(libApps.length?'No apps match your search.':'No apps found in this folder.')+'</p>';
+    return;
+  }
+
+  const installedMap=new Map();
+  for(const a of allApps)installedMap.set(a.pkg,a.version);
+
+  libEl.list.innerHTML=filtered.map(a=>{
+    const name=esc(a.displayName());
+    const size=fmtB(a.totalSize);
+    const deviceVer=installedMap.get(a.pkg);
+    const cmp=a.versionName?compareVersions(a.versionName,deviceVer):null;
+    let badge='';
+    if(cmp==='newer')badge='<span class="ver-badge newer">Newer</span>';
+    else if(cmp==='older')badge='<span class="ver-badge older">Older on PC</span>';
+    else if(cmp==='same')badge='<span class="ver-badge same">Same version</span>';
+    else if(cmp==='new-app')badge='<span class="ver-badge new-app">Not installed</span>';
+
+    const verText=a.versionName?'v'+esc(a.versionName):'\u2014';
+    const dateText=a.lastModified?new Date(a.lastModified).toLocaleDateString():'';
+    const canInstall=adb&&adb.connected;
+    return '<div class="lib-row" data-pkg="'+esc(a.pkg)+'">' +
+      '<img class="app-thumb" src="thumbnails/'+encodeURIComponent(a.pkg)+'.jpg" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=app-thumb-placeholder>\ud83c\udfae</div>\'">' +
+      '<div class="lib-name"><div class="pkg">'+name+'</div>' +
+      '<div class="label">'+esc(a.pkg)+'</div></div>' +
+      '<div class="lib-meta">'+verText+badge+'<br>'+size+(dateText?' \u00b7 '+dateText:'')+'</div>' +
+      '<button class="btn sm p" '+(canInstall?'':'disabled title="Connect a device first"')+' onclick="installFromLib(this,'+libApps.indexOf(a)+')">Install</button>' +
+      '</div>';
+  }).join('');
+}
+
+window.installFromLib=async function(btn,idx){
+  const a=libApps[idx];
+  if(!a||!adb||!adb.connected)return;
+  btn.disabled=true;
+  btn.textContent='Installing\u2026';
+
+  clearTimeout(tmr);tmr=null;
+  el.installBox.classList.remove('hidden');
+  el.installLog.innerHTML='';
+  el.installBar.style.width='0';
+  el.installBar.className='bar-fill';
+  el.installStep.textContent='Installing '+a.displayName()+'\u2026';
+
+  const log=(msg,cls='')=>{const d=document.createElement('div');if(cls)d.className=cls;d.textContent=msg;el.installLog.appendChild(d);el.installLog.scrollTop=el.installLog.scrollHeight};
+  let ok=true;
+
+  // Push APK
+  const apkFile=await a.apkHandle.getFile();
+  const tmp='/data/local/tmp/_qadb_'+Date.now()+'.apk';
+  try{
+    log('\u23F3 Pushing '+a.apkFileName+' ('+fmtB(apkFile.size)+')');
+    const t0=Date.now();
+    await adb.push(apkFile,tmp,(s,t)=>{el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0)});
+    log('\u2713 Pushed, installing\u2026','ok');
+    el.installStep.textContent='Running pm install\u2026';
+    el.installBar.style.width='100%';
+    const out=await adb.shell('pm install -r "'+tmp+'" 2>&1');
+    if(out.includes('Success')){log('\u2713 APK installed','ok')}
+    else{log('\u2717 Install failed: '+out.trim(),'err');ok=false}
+    await adb.shell('rm -f "'+tmp+'"');
+  }catch(e){log('\u2717 Error: '+e.message,'err');ok=false;try{await adb.shell('rm -f "'+tmp+'"')}catch{}}
+
+  // Push OBBs if present
+  if(ok&&a.obbHandles.length&&a.pkg){
+    const obbDir='/sdcard/Android/obb/'+a.pkg+'/';
+    try{await adb.shell('mkdir -p "'+obbDir+'"')}catch{}
+    for(const obbHandle of a.obbHandles){
+      const obbFile=await obbHandle.getFile();
+      el.installStep.textContent='Pushing '+obbFile.name+'\u2026';
+      log('\u23F3 Pushing '+obbFile.name+' ('+fmtB(obbFile.size)+')');
+      try{
+        const t0o=Date.now();
+        await adb.push(obbFile,obbDir+obbFile.name,(s,t)=>{el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0o)});
+        log('\u2713 Pushed '+obbFile.name,'ok');
+      }catch(e){log('\u2717 OBB error: '+e.message,'err');ok=false}
+    }
+  }
+
+  el.installStep.textContent=ok?'Installation complete!':'Completed with errors';
+  el.installBar.style.width='100%';
+  el.installBar.className='bar-fill'+(ok?'':' low');
+  el.speedInfo.textContent='';
+  btn.textContent=ok?'Installed':'Install';
+  if(ok)btn.disabled=true;
+  setTimeout(()=>{el.installBox.classList.add('hidden');el.installBar.className='bar-fill'},ok?5000:10000);
+
+  // Refresh installed list to pick up new app
+  if(ok){
+    try{
+      const info=await fetchAppInfo(a.pkg);
+      if(info&&!allApps.some(x=>x.pkg===a.pkg)){
+        allApps.push(info);
+        sortAndRender();
+      }else if(info){
+        const existing=allApps.find(x=>x.pkg===a.pkg);
+        if(existing){Object.assign(existing,info);sortAndRender()}
+      }
+      renderLibrary();
+    }catch{}
+  }
+  if(adb.connected)scheduleRefresh();
+};
+
+/* ── Thumbnail hover popup ──────────────────────────────────────────────── */
+{
+  let popup=null;
+  const showThumb=e=>{
+    if(e.target.classList.contains('app-thumb')){
+      const r=e.target.getBoundingClientRect();
+      popup=document.createElement('img');
+      popup.src=e.target.src;
+      popup.className='app-thumb-popup';
+      const pw=280,ph=160;
+      popup.style.width=pw+'px';popup.style.height=ph+'px';
+      popup.style.left=Math.max(0,r.left+r.width/2-pw/2)+'px';
+      popup.style.top=Math.max(0,r.top+r.height/2-ph/2)+'px';
+      document.body.appendChild(popup);
+      requestAnimationFrame(()=>requestAnimationFrame(()=>popup&&popup.classList.add('show')));
+    }
+  };
+  const hideThumb=e=>{
+    if(e.target.classList.contains('app-thumb')&&popup){const p=popup;popup=null;p.classList.remove('show');p.addEventListener('transitionend',()=>p.remove(),{once:true});setTimeout(()=>p.remove(),200)}
+  };
+  el.appsList.addEventListener('mouseenter',showThumb,true);
+  el.appsList.addEventListener('mouseleave',hideThumb,true);
+  libEl.list.addEventListener('mouseenter',showThumb,true);
+  libEl.list.addEventListener('mouseleave',hideThumb,true);
+}
+
+/* ── Drag & Drop Install ──────────────────────────────────── */
+
+let dragN=0;
+document.addEventListener('dragenter',e=>{e.preventDefault();if(adb.connected&&++dragN===1)el.dropOverlay.classList.remove('hidden')});
+document.addEventListener('dragleave',e=>{e.preventDefault();if(--dragN<=0){dragN=0;el.dropOverlay.classList.add('hidden')}});
+document.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='copy'});
+document.addEventListener('drop',async e=>{
+  e.preventDefault();dragN=0;el.dropOverlay.classList.add('hidden');
+  if(!adb.connected)return;
+  const items=[...e.dataTransfer.items];
+  const entries=[];
+  for(const it of items){const en=it.webkitGetAsEntry?.();if(en)entries.push(...await walkEntry(en))}
+  if(entries.length) await handleInstall(entries);
+});
+
+async function walkEntry(entry,base=''){
+  if(entry.isFile){
+    const f=await new Promise((ok,no)=>entry.file(ok,no));
+    return [{file:f,path:base+entry.name}];
+  }
+  if(entry.isDirectory){
+    const rd=entry.createReader();
+    const all=[];let batch;
+    do{batch=await new Promise((ok,no)=>rd.readEntries(ok,no));all.push(...batch)}while(batch.length);
+    const out=[];
+    for(const e of all) out.push(...await walkEntry(e,base+entry.name+'/'));
+    return out;
+  }
+  return [];
+}
+
+function detectPkg(entries){
+  for(const e of entries){
+    if(!e.file.name.toLowerCase().endsWith('.obb'))continue;
+    // From parent folder name (e.g. com.survios.Electronauts/)
+    for(const seg of e.path.split('/')){
+      if(/^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*){2,}$/.test(seg))return seg;
+    }
+    // From OBB filename: main.123.com.example.game.obb
+    const m=e.file.name.match(/^(?:main|patch)\.\d+\.(.+)\.obb$/i);
+    if(m)return m[1];
+  }
+  return '';
+}
+
+async function handleInstall(entries){
+  const apks=entries.filter(e=>e.file.name.toLowerCase().endsWith('.apk'));
+  const obbs=entries.filter(e=>e.file.name.toLowerCase().endsWith('.obb'));
+  if(!apks.length&&!obbs.length){showErr('No APK or OBB files found in the dropped items.');return}
+
+  const pkg=detectPkg(entries);
+
+  // Pause auto-refresh during install
+  clearTimeout(tmr);tmr=null;
+
+  el.installBox.classList.remove('hidden');
+  el.installLog.innerHTML='';
+  el.installBar.style.width='0';
+  el.installBar.className='bar-fill';
+
+  const log=(msg,cls='')=>{const d=document.createElement('div');if(cls)d.className=cls;d.textContent=msg;el.installLog.appendChild(d);el.installLog.scrollTop=el.installLog.scrollHeight};
+  let ok=true;
+
+  // Install APKs
+  for(const apk of apks){
+    el.installStep.textContent='Installing '+apk.file.name+'…';
+    log('\u23F3 Pushing '+apk.file.name+' ('+fmtB(apk.file.size)+')');
+    const tmp='/data/local/tmp/_qadb_'+Date.now()+'.apk';
+    try{
+      const t0=Date.now();
+      await adb.push(apk.file,tmp,(s,t)=>{el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0)});
+      log('\u2713 Pushed, installing…','ok');
+      el.installStep.textContent='Running pm install…';
+      el.installBar.style.width='100%';
+      const out=await adb.shell('pm install -r "'+tmp+'" 2>&1');
+      if(out.includes('Success')){log('\u2713 Installed '+apk.file.name,'ok')}
+      else{log('\u2717 Install failed: '+out.trim(),'err');ok=false}
+      await adb.shell('rm -f "'+tmp+'"');
+    }catch(e){log('\u2717 Error: '+e.message,'err');ok=false;try{await adb.shell('rm -f "'+tmp+'"')}catch{}}
+  }
+
+  // Push OBBs
+  if(obbs.length&&pkg){
+    const obbDir='/sdcard/Android/obb/'+pkg+'/';
+    try{await adb.shell('mkdir -p "'+obbDir+'"')}catch{}
+    for(const obb of obbs){
+      el.installStep.textContent='Pushing '+obb.file.name+'…';
+      log('\u23F3 Pushing '+obb.file.name+' ('+fmtB(obb.file.size)+')');
+      try{
+        const t0o=Date.now();
+        await adb.push(obb.file,obbDir+obb.file.name,(s,t)=>{el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0o)});
+        log('\u2713 Pushed '+obb.file.name,'ok');
+      }catch(e){log('\u2717 Error: '+e.message,'err');ok=false}
+    }
+  }else if(obbs.length&&!pkg){
+    log('\u26A0 OBB files found but could not detect package name — skipped.','warn');ok=false;
+  }
+
+  el.installStep.textContent=ok?'Installation complete!':'Completed with errors';
+  el.installBar.style.width='100%';
+  el.installBar.className='bar-fill'+(ok?'':' low');
+  log(ok?'\u2713 All done!':'\u26A0 Some steps failed.', ok?'ok':'err');
+
+  // Add newly installed apps to the list without full reload
+  if(apks.length){
+    for(const apk of apks){
+      // Detect pkg from APK filename or from pm install output
+      // Ask the device which packages exist that we might have just installed
+      try{
+        // Get package name from the APK we just installed by checking the tmp path
+        // Simpler: just query all 3rd-party packages and find the new one(s)
+        const raw=await adb.shell('pm list packages -3 2>/dev/null | sed "s/^package://" | sort -u');
+        const current=new Set(raw.split('\n').map(s=>s.trim()).filter(Boolean));
+        const existing=new Set(allApps.map(a=>a.pkg));
+        for(const p of current){
+          if(!existing.has(p)&&!isSystemPkg(p)){
+            const info=await fetchAppInfo(p);
+            if(info){allApps.push(info);log('\u2795 Added '+info.name+' to list','ok')}
+          }
+        }
+        sortAndRender();
+      }catch{}
+    }
+  }
+
+  // Resume auto-refresh
+  if(adb.connected)scheduleRefresh();
+
+  el.speedInfo.textContent='';
+  // Auto-hide install box after a delay
+  setTimeout(()=>{el.installBox.classList.add('hidden');el.installBar.className='bar-fill'},ok?5000:15000);
+}
+
+function showSpeed(sent,total,startMs){
+  const elapsed=(Date.now()-startMs)/1000;
+  if(elapsed<0.5){el.speedInfo.textContent='';return}
+  const speed=sent/elapsed;
+  const remain=total>sent?((total-sent)/speed):0;
+  const eta=remain<60?Math.ceil(remain)+'s':Math.floor(remain/60)+'m '+Math.ceil(remain%60)+'s';
+  el.speedInfo.innerHTML='<span>'+fmtB(Math.round(speed))+'/s</span><span>'+fmtB(sent)+' / '+fmtB(total)+' &mdash; '+eta+' left</span>';
+}
+
+/* ── Minimal ZIP builder (store mode, no compression) ─────── */
+
+function buildZip(files){
+  // files: [{name:string, blob:Blob}]
+  // Returns a Blob of the zip file
+  const entries=[];
+  let offset=0;
+  const parts=[];
+
+  for(const f of files){
+    const nameBytes=ENC.encode(f.name);
+    const size=f.size;
+    const crc=f.crc;
+    // Local file header (30 + name)
+    const lh=new ArrayBuffer(30);
+    const lv=new DataView(lh);
+    lv.setUint32(0,0x04034b50,true); // sig
+    lv.setUint16(4,20,true); // version needed
+    lv.setUint16(6,0,true); // flags
+    lv.setUint16(8,0,true); // compression: store
+    lv.setUint16(10,0,true); // mod time
+    lv.setUint16(12,0,true); // mod date
+    lv.setUint32(14,crc,true); // crc32
+    lv.setUint32(18,size,true); // compressed
+    lv.setUint32(22,size,true); // uncompressed
+    lv.setUint16(26,nameBytes.length,true);
+    lv.setUint16(28,0,true); // extra len
+    parts.push(new Uint8Array(lh),nameBytes,f.blob);
+    entries.push({nameBytes,size,crc,offset});
+    offset+=30+nameBytes.length+size;
+  }
+
+  // Central directory
+  const cdStart=offset;
+  for(const e of entries){
+    const cd=new ArrayBuffer(46);
+    const cv=new DataView(cd);
+    cv.setUint32(0,0x02014b50,true);
+    cv.setUint16(4,20,true); // version made by
+    cv.setUint16(6,20,true); // version needed
+    cv.setUint16(8,0,true); // flags
+    cv.setUint16(10,0,true); // compression
+    cv.setUint16(12,0,true); cv.setUint16(14,0,true); // time/date
+    cv.setUint32(16,e.crc,true);
+    cv.setUint32(20,e.size,true);
+    cv.setUint32(24,e.size,true);
+    cv.setUint16(28,e.nameBytes.length,true);
+    cv.setUint16(30,0,true); cv.setUint16(32,0,true);
+    cv.setUint16(34,0,true); cv.setUint16(36,0,true);
+    cv.setUint32(38,32,true); // external attrs
+    cv.setUint32(42,e.offset,true);
+    parts.push(new Uint8Array(cd),e.nameBytes);
+    offset+=46+e.nameBytes.length;
+  }
+  const cdSize=offset-cdStart;
+
+  // End of central directory
+  const eocd=new ArrayBuffer(22);
+  const ev=new DataView(eocd);
+  ev.setUint32(0,0x06054b50,true);
+  ev.setUint16(4,0,true); ev.setUint16(6,0,true);
+  ev.setUint16(8,entries.length,true);
+  ev.setUint16(10,entries.length,true);
+  ev.setUint32(12,cdSize,true);
+  ev.setUint32(16,cdStart,true);
+  ev.setUint16(20,0,true);
+  parts.push(new Uint8Array(eocd));
+
+  return new Blob(parts,{type:'application/zip'});
+}
+
+const CRC_TABLE=(()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[i]=c}return t})();
+async function crc32Blob(blob){
+  let crc=0xFFFFFFFF;
+  const reader=blob.stream().getReader();
+  for(;;){
+    const{done,value}=await reader.read();
+    if(done)break;
+    for(let i=0;i<value.length;i++)crc=CRC_TABLE[(crc^value[i])&0xFF]^(crc>>>8);
+  }
+  return (crc^0xFFFFFFFF)>>>0;
+}
+
+/* ── App Backup ───────────────────────────────────────────── */
+
+window.backupApp=async function(btn,pkg){
+  const row=btn.closest('.app-row');
+  row.classList.add('backing-up');
+  btn.textContent='Backing up…';
+
+  clearTimeout(tmr);tmr=null;
+
+  el.installBox.classList.remove('hidden');
+  el.installLog.innerHTML='';
+  el.installBar.style.width='0';
+  el.installBar.className='bar-fill';
+  el.speedInfo.textContent='';
+  el.installStep.textContent='Backing up '+pkg+'…';
+
+  const log=(msg,cls='')=>{const d=document.createElement('div');if(cls)d.className=cls;d.textContent=msg;el.installLog.appendChild(d);el.installLog.scrollTop=el.installLog.scrollHeight};
+  const zipFiles=[];
+  let ok=true;
+
+  try{
+    // 1) Find APK path(s)
+    const apkRaw=await adb.shell('pm path "'+pkg+'" 2>/dev/null');
+    const apkPaths=apkRaw.split('\n').map(l=>l.replace(/^package:/,'').trim()).filter(Boolean);
+
+    for(const ap of apkPaths){
+      const name=ap.split('/').pop();
+      log('\u23F3 Pulling '+name+'…');
+      try{
+        const t0=Date.now();
+        const blob=await adb.pull(ap,(s,t)=>{if(t>0){el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0)}});
+        const crc=await crc32Blob(blob);
+        zipFiles.push({name,blob,size:blob.size,crc});
+        log('\u2713 '+name+' ('+fmtB(blob.size)+')','ok');
+      }catch(e){log('\u2717 Failed to pull '+name+': '+e.message,'err');ok=false}
+    }
+
+    // 2) List OBB files
+    const obbRaw=await adb.shell('ls -1 /sdcard/Android/obb/'+pkg+'/ 2>/dev/null');
+    const obbFiles=obbRaw.split('\n').map(s=>s.trim()).filter(s=>s&&!s.includes('No such'));
+    for(const f of obbFiles){
+      const rp='/sdcard/Android/obb/'+pkg+'/'+f;
+      log('\u23F3 Pulling obb/'+f+'…');
+      try{
+        const t0=Date.now();
+        const blob=await adb.pull(rp,(s,t)=>{if(t>0){el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0)}});
+        const crc=await crc32Blob(blob);
+        zipFiles.push({name:pkg+'/obb/'+f,blob,size:blob.size,crc});
+        log('\u2713 '+f+' ('+fmtB(blob.size)+')','ok');
+      }catch(e){log('\u2717 Failed: '+e.message,'err');ok=false}
+    }
+
+    // 3) List external data
+    const dataRaw=await adb.shell('find /sdcard/Android/data/'+pkg+'/ -type f 2>/dev/null | head -200');
+    const dataFiles=dataRaw.split('\n').map(s=>s.trim()).filter(s=>s&&!s.includes('No such'));
+    if(dataFiles.length){
+      log('\u23F3 Pulling '+dataFiles.length+' data file(s)…');
+      for(const fp of dataFiles){
+        const rel=fp.replace('/sdcard/Android/data/'+pkg+'/','');
+        try{
+          const blob=await adb.pull(fp);
+          const crc=await crc32Blob(blob);
+          zipFiles.push({name:pkg+'/data/'+rel,blob,size:blob.size,crc});
+        }catch{}
+      }
+      log('\u2713 Data files pulled','ok');
+    }
+
+    if(!zipFiles.length){log('\u2717 Nothing to backup','err');ok=false;return}
+
+    // Build ZIP
+    log('\u23F3 Building ZIP…');
+    el.installStep.textContent='Building ZIP…';
+    const zip=buildZip(zipFiles);
+    log('\u2713 ZIP ready: '+fmtB(zip.size),'ok');
+
+    // Trigger download
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(zip);
+    const appInfo=allApps.find(x=>x.pkg===pkg);
+    a.download=(appInfo?.name||pkg)+'.zip';
+    document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},5000);
+    el.installStep.textContent='Backup complete!';
+  }catch(e){
+    log('\u2717 Backup failed: '+e.message,'err');ok=false;
+    el.installStep.textContent='Backup failed';
+  }finally{
+    row.classList.remove('backing-up');
+    btn.textContent='Export';
+    el.installBar.style.width='100%';
+    el.installBar.className='bar-fill'+(ok?'':' low');
+    el.speedInfo.textContent='';
+    if(adb.connected)scheduleRefresh();
+    setTimeout(()=>{el.installBox.classList.add('hidden');el.installBar.className='bar-fill'},ok?5000:15000);
+  }
+};
+
+if(!navigator.usb){$('#no-webusb').classList.remove('hidden');el.bc.disabled=true}
+else autoReconnect();
+
+/* ================================================================
+   Title typing animation: JP ↔ Claude
+   ================================================================ */
+(function(){
+  const nameEl=$('#author-name');
+  if(!nameEl)return;
+
+  const JP='JP';
+  const CLAUDE='Claude';
+  const TYPE_SPEED=110;       // ms per character typed
+  const DELETE_SPEED=80;      // ms per character deleted
+  const PAUSE_ON_JP=12000;    // long pause showing JP (12s)
+  const PAUSE_ON_CLAUDE=1800; // short pause showing Claude* (1.8s)
+  const INITIAL_DELAY=6000;   // wait before first animation
+
+  let cursor=true;
+  let cursorInterval;
+
+  function setCursor(show){
+    // blinking cursor via border-right on the name span
+    nameEl.style.borderRight=show?'2px solid var(--accent)':'2px solid transparent';
+    nameEl.style.paddingRight='2px';
+  }
+
+  function startCursorBlink(){
+    cursor=true; setCursor(true);
+    cursorInterval=setInterval(()=>{cursor=!cursor;setCursor(cursor)},530);
+  }
+  function stopCursorBlink(){
+    clearInterval(cursorInterval);
+    setCursor(false);
+    nameEl.style.paddingRight='0';
+    nameEl.style.borderRight='none';
+  }
+
+  function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+
+  async function typeText(text){
+    for(let i=0;i<=text.length;i++){
+      nameEl.textContent=text.slice(0,i);
+      await sleep(TYPE_SPEED);
+    }
+  }
+
+  async function deleteText(){
+    const current=nameEl.textContent;
+    for(let i=current.length;i>=0;i--){
+      nameEl.textContent=current.slice(0,i);
+      await sleep(DELETE_SPEED);
+    }
+  }
+
+  async function animationLoop(){
+    await sleep(INITIAL_DELAY);
+    while(true){
+      // Currently showing JP — start deleting it
+      startCursorBlink();
+      await sleep(600);
+      await deleteText();
+      await sleep(300);
+      // Type Claude
+      await typeText(CLAUDE);
+      await sleep(400);
+      stopCursorBlink();
+      // Brief pause on Claude (the joke)
+      await sleep(PAUSE_ON_CLAUDE);
+      // Now delete Claude* and restore JP
+      startCursorBlink();
+      await sleep(400);
+      await deleteText();
+      await sleep(300);
+      // Type JP back
+      await typeText(JP);
+      await sleep(400);
+      stopCursorBlink();
+      // Long pause on JP
+      await sleep(PAUSE_ON_JP);
+    }
+  }
+
+  animationLoop();
+})();
+
+</script>
+</body>
+</html>
