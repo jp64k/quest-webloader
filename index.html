@@ -755,6 +755,8 @@ function setUI(c){
   el.bc.disabled=c;el.bd.disabled=!c;el.br.disabled=!c;
   el.info.classList.toggle('hidden',!c);
   el.appsSection.classList.toggle('hidden',!c);
+  // Show PC Library only after device connects (scanning is local, doesn't block Quest init)
+  if(window.showDirectoryPicker) libEl.section.classList.toggle('hidden',!c);
   if(!c){setStatus('off','Disconnected');clearTimeout(tmr);tmr=null;allApps=[]}
 }
 
@@ -1066,10 +1068,7 @@ let libApps=[];
 let libDirHandle=null;
 let libSortBy='name';
 
-// Show PC Library section only if File System Access API is supported
-if(window.showDirectoryPicker){
-  libEl.section.classList.remove('hidden');
-}
+// PC Library section is shown/hidden via setUI() when a device connects/disconnects
 
 // ── Scan cache (localStorage) ────────────────────────────────
 function libCacheKey(){return 'lib_cache_'+libDirHandle.name}
