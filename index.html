@@ -28,8 +28,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text'
 /* header */
 header{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;animation:fadeUp .5s ease}
 .logo{display:flex;align-items:center;gap:.6rem;color:var(--accent)}
+.logo svg{align-self:flex-start;margin-top:.22rem}
+.logo-text{display:flex;flex-direction:column}
 .logo h1{font-size:1.25rem;font-weight:600;letter-spacing:-.02em}
-.logo .by{font-size:.85rem;color:var(--dim);font-weight:400}
+.logo .by{font-size:.85rem;color:var(--dim);font-weight:400;line-height:1;padding-left:.1rem}
 .logo .by a{color:var(--accent);text-decoration:none;transition:color .2s}
 .logo .by a:hover{color:var(--accent-h)}
 .status-bar{display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--dim)}
@@ -153,7 +155,10 @@ footer{margin-top:3rem;text-align:center;font-size:.75rem;color:var(--dim)}
   <header>
     <div class="logo">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="5"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/></svg>
-      <h1>Quest Webloader <span class="by">by <a id="author-link" href="https://discord.com/users/196992876029280257" target="_blank" rel="noopener noreferrer"><span id="author-name">JP</span></a></span></h1>
+      <div class="logo-text">
+        <h1>Quest Webloader</h1>
+        <span class="by">by <a id="author-link" href="https://discord.com/users/196992876029280257" target="_blank" rel="noopener noreferrer"><span id="author-name">JP</span></a></span>
+      </div>
     </div>
     <div class="status-bar">
       <span id="dot" class="dot off"></span>
