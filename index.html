@@ -71,7 +71,7 @@ header{display:flex;align-items:center;justify-content:space-between;margin-bott
 .notice p{color:var(--dim);margin:.5rem 0}.notice h2{font-size:1.1rem}
 .spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto .75rem}
 @keyframes spin{to{transform:rotate(360deg)}}
-.con-msg{text-align:left;font-size:.92rem;color:var(--dim);line-height:1.8;max-width:380px;margin:0 auto}
+.con-msg{text-align:left;font-size:.92rem;color:var(--dim);line-height:1.8;max-width:80%;margin:0 auto}
 .con-msg b{color:var(--text);font-weight:600}
 .con-msg ul{margin:.3rem 0 0;padding-left:1.2em}
 .con-msg li{list-style:disc}
@@ -1018,7 +1018,7 @@ function scheduleRefresh(){clearTimeout(tmr);tmr=setTimeout(async()=>{await refr
 const ADB_FILTER={classCode:0xFF,subclassCode:0x42,protocolCode:0x01};
 
 async function connectDev(usb){
-  hideErr();showCon('<div class="con-msg"><b>Connecting — if this is your first time, accept the prompt on your headset ("Always Allow")</b><br><br>If you don\'t see a prompt:<ul><li>Make sure developer mode is enabled</li><li>Make sure your USB cable supports data</li><li>Try a different USB port or cable</li><li>Restart your headset and try again</li></ul></div>',true);setStatus('wait','Connecting…');
+  hideErr();showCon('<div class="con-msg"><b>Connecting — if this is your first time, accept the prompt on your headset ("Always Allow")</b><br><br>If you don\'t see a prompt:<ul><li>Make sure developer mode is enabled</li><li>Make sure your USB cable supports data</li><li>Try a different USB port or cable</li><li>Restart your headset</li></ul></div>',true);setStatus('wait','Connecting…');
   try{
     await adb.connect(usb);
     setStatus('on','Connected');setUI(true);hideCon();
