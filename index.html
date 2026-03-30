@@ -749,8 +749,8 @@ function setStatus(s,t){el.dot.className='dot '+s;el.stxt.textContent=t}
 function fmtB(b){if(!b)return'0 B';const u=['B','KB','MB','GB','TB'];const i=Math.floor(Math.log(b)/Math.log(1024));return(b/1024**i).toFixed(i>1?1:0)+' '+u[i]}
 function showErr(m){el.et.textContent=m;el.eb.classList.remove('hidden')}
 function hideErr(){el.eb.classList.add('hidden')}
-function showCon(t='Connecting…'){el.ct.textContent=t;el.cb.classList.remove('hidden')}
-function hideCon(){el.cb.classList.add('hidden')}
+function showCon(t='Connecting…',html=false){if(html)el.ct.innerHTML=t;else el.ct.textContent=t;el.cb.classList.remove('hidden')}
+function hideCon(){el.ct.innerHTML='';el.cb.classList.add('hidden')}
 function setUI(c){
   el.bc.disabled=c;el.bd.disabled=!c;el.br.disabled=!c;
   el.info.classList.toggle('hidden',!c);
@@ -999,7 +999,7 @@ function scheduleRefresh(){clearTimeout(tmr);tmr=setTimeout(async()=>{await refr
 const ADB_FILTER={classCode:0xFF,subclassCode:0x42,protocolCode:0x01};
 
 async function connectDev(usb){
-  hideErr();showCon('Connecting — if first time, accept the prompt on your headset (\'Always Allow\')\n\nIf you aren\'t seeing any prompt:\n- Ensure developer mode is enabled on your headset\n- Ensure your USB cable supports data\n\nYou can also try different USB ports and cables, and try restarting your headset.');setStatus('wait','Connecting…');
+  hideErr();showCon('<strong>Connecting</strong> — if this is your first time, accept the prompt on your headset (<em>Always Allow</em>).<br><br>If you don\'t see a prompt:<ul style="text-align:left;display:inline-block;margin:.4rem 0"><li>Make sure developer mode is enabled</li><li>Make sure your USB cable supports data</li><li>Try a different USB port or cable</li><li>Restart your headset and try again</li></ul>',true);setStatus('wait','Connecting…');
   try{
     await adb.connect(usb);
     setStatus('on','Connected');setUI(true);hideCon();
