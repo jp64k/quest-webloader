@@ -1,10 +1,8 @@
-# Quest Webloader
+# Quest Webloader - **[webloader.app](https://webloader.app/)**
 
 A sideloader and app manager for Meta Quest headsets that runs entirely in your browser. Just open the page and plug in your device.
 
-**[webloader.app](https://webloader.app/)**
-
-<img width="816" height="481" alt="image" src="https://github.com/user-attachments/assets/6d6d27ba-40ab-4bf4-9d41-5c5c20c4f5a4" />
+[<img width="816" height="481" alt="image" src="https://github.com/user-attachments/assets/6d6d27ba-40ab-4bf4-9d41-5c5c20c4f5a4" />](https://webloader.app/)
 
 ## Features
 
