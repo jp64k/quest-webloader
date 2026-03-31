@@ -1487,7 +1487,7 @@ window.installFromLib=async function(btn,idx){
     el.installStep.textContent='Running pm install\u2026';
     el.installBar.style.width='100%';
     const out=await adb.shell('pm install -r "'+tmp+'" 2>&1');
-    if(out.includes('Success')){log('\u2713 APK installed','ok')}
+    if(out.includes('Success')){log('\u2713 Installed '+a.apkFileName,'ok')}
     else{log('\u2717 Install failed: '+out.trim(),'err');ok=false}
     await adb.shell('rm -f "'+tmp+'"');
   }catch(e){log('\u2717 Error: '+e.message,'err');ok=false;try{await adb.shell('rm -f "'+tmp+'"')}catch{}}
@@ -1511,6 +1511,7 @@ window.installFromLib=async function(btn,idx){
   el.installStep.textContent=ok?'Installation complete!':'Completed with errors';
   el.installBar.style.width='100%';
   el.installBar.className='bar-fill'+(ok?'':' low');
+  log(ok?'\u2713 All done!':'\u26A0 Some steps failed.', ok?'ok':'err');
   el.speedInfo.textContent='';
   btn.textContent=ok?'Installed':'Install';
   if(ok)btn.disabled=true;
