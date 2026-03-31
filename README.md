@@ -9,7 +9,8 @@ A sideloader and app manager for Meta Quest headsets that runs entirely in your 
 - **Sideload Apps** — drag & drop APKs or folders to install
 - **Manage Apps** — view, search, and sort all installed apps
 - **Uninstall Apps** — remove apps from your device directly within the browser
-- **Export Apps** — puill apps from your Quest to your PC as a zip
+- **Export Apps** — pull apps from your Quest to your PC as a zip
+- **Residual Data Cleanup** — automatically detect leftover data from uninstalled apps to let you safely reclaim space
 - **Device Info** — battery, storage, model, and firmware at a glance
 - **Local Library** — point at a local folder on your PC to manage your local app collection, with version comparison against what's installed
 - **Fully local** — nothing is uploaded anywhere, all processing happens in your browser
