@@ -166,6 +166,21 @@ footer{margin-top:3rem;text-align:center;font-size:.75rem;color:var(--dim)}
 .lib-list{display:flex;flex-direction:column;gap:.45rem;max-height:520px;overflow-y:auto;padding:2px 6px 2px 2px;margin:0 -2px}
 .lib-list::-webkit-scrollbar{width:5px}.lib-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}
 .lib-note{font-size:.78rem;color:var(--dim);text-align:center;padding:.6rem;background:var(--glass);border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem}
+
+/* Residual data cleanup */
+#residual-section{margin-top:1.5rem;animation:fadeUp .4s ease}
+#residual-section .res-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem}
+#residual-section .res-header h2{font-size:1.05rem;font-weight:600}
+#residual-section .res-header .meta{font-size:.8rem;color:var(--dim)}
+.res-note{font-size:.78rem;color:var(--dim);text-align:center;padding:.5rem .75rem;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.15);border-radius:10px;margin-bottom:.75rem;line-height:1.5}
+.res-list{display:flex;flex-direction:column;gap:.45rem}
+.res-row{display:flex;align-items:center;gap:.75rem;background:var(--glass);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));border:1px solid var(--border);border-radius:14px;padding:.7rem .9rem;transition:all .25s ease;animation:fadeIn .3s ease backwards}
+.res-row:hover{border-color:rgba(255,255,255,.14);background:var(--glass-h)}
+.res-info{flex:1;min-width:0}
+.res-info .pkg{font-size:.85rem;font-weight:500;word-break:break-all}
+.res-info .label{font-size:.75rem;color:var(--dim);margin-top:.1rem}
+.res-size{text-align:right;flex-shrink:0;font-size:.78rem;color:var(--dim);white-space:nowrap}
+.res-row .btn{flex-shrink:0}
 .hidden{display:none!important}
 </style>
 </head>
@@ -260,6 +275,15 @@ footer{margin-top:3rem;text-align:center;font-size:.75rem;color:var(--dim)}
         <div class="install-log" id="install-log"></div>
       </div>
       <div class="app-list" id="app-list"></div>
+
+      <section id="residual-section" class="hidden">
+        <div class="res-header">
+          <h2>🧹 Leftover Data</h2>
+          <span class="meta" id="res-count"></span>
+        </div>
+        <div class="res-note">These folders belong to apps that are no longer installed. They're safe to remove, but each delete is verified first</div>
+        <div class="res-list" id="res-list"></div>
+      </section>
     </section>
 
     <section id="pc-library" class="hidden">
@@ -756,6 +780,7 @@ const el={
   installBox:$('#install-box'),installStep:$('#install-step'),
   installBar:$('#install-bar'),installLog:$('#install-log'),
   speedInfo:$('#speed-info'),
+  resSection:$('#residual-section'),resList:$('#res-list'),resCount:$('#res-count'),
 };
 
 const adb=new AdbDevice();
@@ -952,12 +977,114 @@ async function loadApps(){
 
     allApps=all;
     sortAndRender();
+    scanResidual();
   }catch(e){
     console.error('loadApps failed',e);
     el.appsList.innerHTML='';
     showErr('Failed to load apps: '+e.message);
   }
 }
+
+/* ── Residual / orphan data cleanup ───────────────────────── */
+
+let residualItems=[];
+
+async function scanResidual(){
+  el.resSection.classList.add('hidden');
+  residualItems=[];
+  try{
+    // Get ALL installed packages (user + system) so we never flag something that's actually installed
+    const allPkgRaw=await adb.shell('pm list packages 2>/dev/null | sed "s/^package://" | sort -u');
+    const installedSet=new Set(allPkgRaw.split('\n').map(s=>s.trim()).filter(Boolean));
+
+    // Scan obb + data + media directories for folder names that look like package names
+    const dirs=['/sdcard/Android/obb','/sdcard/Android/data','/sdcard/Android/media'];
+    const labelMap={'/sdcard/Android/obb':'obb','/sdcard/Android/data':'data','/sdcard/Android/media':'media'};
+
+    for(const dir of dirs){
+      const raw=await adb.shell('ls -1 "'+dir+'/" 2>/dev/null');
+      const folders=raw.split('\n').map(s=>s.trim()).filter(s=>s&&!s.includes('No such')&&!s.includes('Permission denied'));
+      for(const folder of folders){
+        // Skip if it's an installed package
+        if(installedSet.has(folder))continue;
+        // Skip system / platform folders — these are not user-removable leftovers
+        if(SYS_PREFIX.some(s=>folder.startsWith(s)))continue;
+        // Skip non-package-looking names
+        if(!/^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*){1,}$/.test(folder))continue;
+        // Get size
+        const sizeRaw=await adb.shell('du -sk "'+dir+'/'+folder+'" 2>/dev/null | cut -f1');
+        const sizeKB=parseInt(sizeRaw.trim(),10)||0;
+        if(sizeKB<=0)continue;
+        residualItems.push({pkg:folder,path:dir+'/'+folder,type:labelMap[dir],sizeBytes:sizeKB*1024});
+      }
+    }
+
+    if(!residualItems.length){
+      el.resSection.classList.add('hidden');
+      return;
+    }
+
+    // Sort biggest first
+    residualItems.sort((a,b)=>b.sizeBytes-a.sizeBytes);
+    renderResidual();
+    el.resSection.classList.remove('hidden');
+  }catch(e){console.warn('scanResidual failed',e)}
+}
+
+function renderResidual(){
+  const totalSize=residualItems.reduce((s,r)=>s+r.sizeBytes,0);
+  el.resCount.textContent=residualItems.length+' leftover'+(residualItems.length!==1?'s':'')+' · '+fmtB(totalSize)+' reclaimable';
+  el.resList.innerHTML=residualItems.map((r,i)=>{
+    const name=pkgToName(r.pkg);
+    return '<div class="res-row" id="res-'+i+'">' +
+      '<div class="res-info"><div class="pkg">'+esc(name)+'</div>' +
+      '<div class="label">'+esc(r.pkg)+' · '+r.type+'</div></div>' +
+      '<div class="res-size">'+fmtB(r.sizeBytes)+'</div>' +
+      '<button class="btn sm d" onclick="deleteResidual('+i+')">Remove</button>' +
+      '</div>';
+  }).join('');
+}
+
+window.deleteResidual=async function(idx){
+  const r=residualItems[idx];
+  if(!r)return;
+  if(!confirm('Delete leftover '+r.type+' data for '+r.pkg+'?\n\nPath: '+r.path+'\nSize: '+fmtB(r.sizeBytes)+'\n\nThis cannot be undone.'))return;
+
+  const row=document.getElementById('res-'+idx);
+  const btn=row?.querySelector('.btn');
+  if(btn){btn.disabled=true;btn.textContent='Checking…'}
+
+  try{
+    // SAFETY: re-verify right now that this package is truly not installed
+    const check=await adb.shell('pm list packages "'+r.pkg+'" 2>/dev/null');
+    if(check.includes(r.pkg)){
+      showErr('Safety check: '+r.pkg+' appears to be installed now. Skipping delete.');
+      if(btn){btn.disabled=false;btn.textContent='Remove'}
+      return;
+    }
+
+    if(btn)btn.textContent='Deleting…';
+    await adb.shell('rm -rf "'+r.path+'"');
+
+    // Verify it's gone
+    const verify=await adb.shell('ls -d "'+r.path+'" 2>/dev/null');
+    if(verify.trim()&&!verify.includes('No such')){
+      showErr('Could not fully remove '+r.path);
+      if(btn){btn.disabled=false;btn.textContent='Remove'}
+      return;
+    }
+
+    // Remove from list and re-render
+    residualItems.splice(idx,1);
+    if(residualItems.length)renderResidual();
+    else el.resSection.classList.add('hidden');
+    // Refresh storage info
+    refresh();
+  }catch(e){
+    showErr('Delete failed: '+e.message);
+    if(btn){btn.disabled=false;btn.textContent='Remove'}
+  }
+};
 
 function sortAndRender(){
   const s=el.appsSort.value;
