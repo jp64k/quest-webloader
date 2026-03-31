@@ -988,7 +988,7 @@ function renderApps(){
       '<img class="app-thumb" src="thumbnails/'+encodeURIComponent(a.pkg)+'.jpg" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=app-thumb-placeholder>\ud83c\udfae</div>\'">' +
       '<div class="app-name"><div class="pkg">'+esc(displayName)+'</div>' +
       '<div class="label">'+esc(a.pkg)+'</div></div>' +
-      '<div class="app-meta">v'+esc(a.version)+'<br>'+size+(a.updatedAt?'<br>'+new Date(a.updatedAt).toLocaleDateString():'')+'</div>' +
+      '<div class="app-meta">v'+esc(a.version)+'<br>'+size+(a.updatedAt?' \u00b7 '+new Date(a.updatedAt).toLocaleDateString():'')+'</div>' +
       '<button class="btn sm s" title="Pulls App to PC" onclick="backupApp(this,\''+a.pkg.replace(/'/g,"\\'")+'\')">Export</button>' +
       '<button class="btn sm d" onclick="uninstallApp(this,\''+a.pkg.replace(/'/g,"\\'")+'\')">Uninstall</button>' +
       '</div>';
