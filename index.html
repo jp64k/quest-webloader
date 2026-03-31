@@ -1467,6 +1467,7 @@ window.installFromLib=async function(btn,idx){
 
   clearTimeout(tmr);tmr=null;
   el.installBox.classList.remove('hidden');
+  el.installBox.scrollIntoView({behavior:'smooth',block:'start'});
   el.installLog.innerHTML='';
   el.installBar.style.width='0';
   el.installBar.className='bar-fill';
@@ -1614,6 +1615,7 @@ async function handleInstall(entries){
   clearTimeout(tmr);tmr=null;
 
   el.installBox.classList.remove('hidden');
+  el.installBox.scrollIntoView({behavior:'smooth',block:'start'});
   el.installLog.innerHTML='';
   el.installBar.style.width='0';
   el.installBar.className='bar-fill';
@@ -1793,6 +1795,7 @@ window.backupApp=async function(btn,pkg){
   clearTimeout(tmr);tmr=null;
 
   el.installBox.classList.remove('hidden');
+  el.installBox.scrollIntoView({behavior:'smooth',block:'start'});
   el.installLog.innerHTML='';
   el.installBar.style.width='0';
   el.installBar.className='bar-fill';
