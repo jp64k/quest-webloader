@@ -249,6 +249,7 @@ footer{margin-top:3rem;text-align:center;font-size:.75rem;color:var(--dim)}
         <input type="text" id="apps-search" placeholder="Search apps…" />
         <select id="apps-sort">
           <option value="name">Sort by name</option>
+          <option value="date">Sort by date</option>
           <option value="size">Sort by size</option>
         </select>
       </div>
@@ -846,9 +847,10 @@ async function fetchAppInfo(pkg){
     'ed=$(du -sk /sdcard/Android/data/$p 2>/dev/null | cut -f1); '+
     'o=$(du -sk /sdcard/Android/obb/$p 2>/dev/null | cut -f1); '+
     'md=$(du -sk /sdcard/Android/media/$p 2>/dev/null | cut -f1); '+
-    'echo "##${p}##${v}##${n}##${i:-0}##${dd:-0}##${ed:-0}##${o:-0}##${md:-0}"';
+    'ut=0; [ -n "$a" ] && ut=$(stat -c %Y "$a" 2>/dev/null); '+
+    'echo "##${p}##${v}##${n}##${i:-0}##${dd:-0}##${ed:-0}##${o:-0}##${md:-0}##${ut:-0}"';
   const raw=await adb.shell(script);
-  const m=raw.match(/^##(.+?)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)$/m);
+  const m=raw.match(/^##(.+?)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)$/m);
   if(!m)return null;
   const installKB=parseInt(m[4],10)||0;
   const intDataKB=parseInt(m[5],10)||0;
@@ -858,7 +860,8 @@ async function fetchAppInfo(pkg){
   return{
     pkg:m[1], version:m[2]||'\u2014',
     name:m[3]||pkgToName(m[1]),
-    sizeBytes:(installKB+intDataKB+extDataKB+obbKB+mediaKB)*1024
+    sizeBytes:(installKB+intDataKB+extDataKB+obbKB+mediaKB)*1024,
+    updatedAt:(parseInt(m[9],10)||0)*1000
   };
 }
 
@@ -898,7 +901,8 @@ async function loadApps(){
         'ed=$(du -sk /sdcard/Android/data/$p 2>/dev/null | cut -f1); '+
         'o=$(du -sk /sdcard/Android/obb/$p 2>/dev/null | cut -f1); '+
         'md=$(du -sk /sdcard/Android/media/$p 2>/dev/null | cut -f1); '+
-        'echo "##${p}##${v}##${n}##${i:-0}##${dd:-0}##${ed:-0}##${o:-0}##${md:-0}"; '+
+        'ut=0; [ -n "$a" ] && ut=$(stat -c %Y "$a" 2>/dev/null); '+
+        'echo "##${p}##${v}##${n}##${i:-0}##${dd:-0}##${ed:-0}##${o:-0}##${md:-0}##${ut:-0}"; '+
       'done; echo "##__DONE__##"';
 
     let count=0, lineBuf='';
@@ -906,7 +910,7 @@ async function loadApps(){
     const addedPkgs=new Set();
 
     const parseLine=(line)=>{
-      const m=line.match(/^##(.+?)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)$/);
+      const m=line.match(/^##(.+?)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)$/);
       if(m&&m[1]!=='__DONE__'&&!addedPkgs.has(m[1])&&!isSystemPkg(m[1])){
         addedPkgs.add(m[1]);
         const installKB=parseInt(m[4],10)||0;
@@ -918,7 +922,8 @@ async function loadApps(){
           pkg:m[1],
           version:m[2]||'\u2014',
           name:m[3]||'',
-          sizeBytes:(installKB+intDataKB+extDataKB+obbKB+mediaKB)*1024
+          sizeBytes:(installKB+intDataKB+extDataKB+obbKB+mediaKB)*1024,
+          updatedAt:(parseInt(m[9],10)||0)*1000
         });
       }
       if(m) count++;
@@ -931,7 +936,7 @@ async function loadApps(){
       for(const ln of lines) parseLine(ln);
       const pct=Math.min(100,Math.round(count/total*100));
       progBar.style.width=pct+'%';
-      progLabel.textContent='Loading '+count+' / '+total+' apps…';
+      progLabel.textContent='Loading '+Math.min(count,total)+' / '+total+' apps…';
     });
     // Parse any remaining data in buffer
     if(lineBuf) parseLine(lineBuf);
@@ -957,6 +962,7 @@ async function loadApps(){
 function sortAndRender(){
   const s=el.appsSort.value;
   if(s==='size') allApps.sort((a,b)=>b.sizeBytes-a.sizeBytes);
+  else if(s==='date') allApps.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
   else allApps.sort((a,b)=>(a.name||a.pkg).localeCompare(b.name||b.pkg));
   renderApps();
 }
@@ -982,7 +988,7 @@ function renderApps(){
       '<img class="app-thumb" src="thumbnails/'+encodeURIComponent(a.pkg)+'.jpg" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=app-thumb-placeholder>\ud83c\udfae</div>\'">' +
       '<div class="app-name"><div class="pkg">'+esc(displayName)+'</div>' +
       '<div class="label">'+esc(a.pkg)+'</div></div>' +
-      '<div class="app-meta">v'+esc(a.version)+'<br>'+size+'</div>' +
+      '<div class="app-meta">v'+esc(a.version)+'<br>'+size+(a.updatedAt?'<br>'+new Date(a.updatedAt).toLocaleDateString():'')+'</div>' +
       '<button class="btn sm s" title="Pulls App to PC" onclick="backupApp(this,\''+a.pkg.replace(/'/g,"\\'")+'\')">Export</button>' +
       '<button class="btn sm d" onclick="uninstallApp(this,\''+a.pkg.replace(/'/g,"\\'")+'\')">Uninstall</button>' +
       '</div>';
@@ -1803,8 +1809,9 @@ window.backupApp=async function(btn,pkg){
     const apkPaths=apkRaw.split('\n').map(l=>l.replace(/^package:/,'').trim()).filter(Boolean);
 
     for(const ap of apkPaths){
-      const name=ap.split('/').pop();
-      log('\u23F3 Pulling '+name+'…');
+      const origName=ap.split('/').pop();
+      const name=apkPaths.length>1?pkg+'_'+origName:pkg+'.apk';
+      log('\u23F3 Pulling '+origName+'…');
       try{
         const t0=Date.now();
         const blob=await adb.pull(ap,(s,t)=>{if(t>0){el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0)}});
