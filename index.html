@@ -1795,8 +1795,11 @@ document.addEventListener('drop',async e=>{
   e.preventDefault();dragN=0;el.dropOverlay.classList.add('hidden');
   if(!adb.connected)return;
   const items=[...e.dataTransfer.items];
+  // Collect all entries synchronously — DataTransferItems are invalidated after the first await
+  const rawEntries=[];
+  for(const it of items){const en=it.webkitGetAsEntry?.();if(en)rawEntries.push(en)}
   const entries=[];
-  for(const it of items){const en=it.webkitGetAsEntry?.();if(en)entries.push(...await walkEntry(en))}
+  for(const en of rawEntries) entries.push(...await walkEntry(en));
   if(entries.length) await handleInstall(entries);
 });
 
