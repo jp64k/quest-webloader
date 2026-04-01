@@ -182,6 +182,24 @@ footer{margin-top:3rem;text-align:center;font-size:.75rem;color:var(--dim)}
 .res-size{text-align:right;flex-shrink:0;font-size:.78rem;color:var(--dim);white-space:nowrap}
 .res-row .btn{flex-shrink:0}
 .hidden{display:none!important}
+
+/* ── Small-screen responsive ─────────────────────────────── */
+.btns{display:contents}
+@media(max-width:520px){
+  #app{padding:1.25rem .75rem}
+  .app-row,.lib-row{display:grid;grid-template-columns:40px 1fr;grid-template-rows:auto auto auto;gap:.3rem .5rem;padding:.65rem .7rem}
+  .res-row{display:grid;grid-template-columns:1fr;grid-template-rows:auto auto auto;gap:.3rem .5rem;padding:.65rem .7rem}
+  .app-thumb,.app-thumb-placeholder{width:40px;height:24px;border-radius:6px;grid-row:1;grid-column:1}
+  .app-name,.lib-name{grid-row:1;grid-column:2;min-width:0;overflow:hidden}
+  .res-info{grid-row:1;grid-column:1;min-width:0;overflow:hidden}
+  .app-name .pkg,.lib-name .pkg,.res-info .pkg{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .app-name .label,.lib-name .label,.res-info .label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .app-meta,.lib-meta{grid-row:2;grid-column:1/-1;font-size:.72rem;text-align:left;padding-left:48px}
+  .res-size{grid-row:2;grid-column:1;font-size:.72rem;text-align:left}
+  .app-row .btns,.lib-row .btns,.res-row .btns{grid-row:3;grid-column:1/-1;display:flex;gap:.5rem;justify-content:flex-end}
+  .btns .btn{font-size:.75rem;padding:.3rem .65rem}
+  .cards{grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.6rem}
+}
 </style>
 </head>
 <body>
@@ -204,9 +222,9 @@ footer{margin-top:3rem;text-align:center;font-size:.75rem;color:var(--dim)}
   <main>
     <section id="no-webusb" class="notice hidden">
       <h2>Your browser doesn't support WebUSB</h2>
-      <p>Quest Webloader requires WebUSB to communicate with your headset. Please switch to one of these browsers:</p>
+      <p>Quest Webloader requires WebUSB to communicate with your headset. Please switch to a browser with WebUSB support, such as:</p>
       <p style="margin-top:.4rem"><strong>Google Chrome</strong> · <strong>Microsoft Edge</strong> · <strong>Opera</strong> · <strong>Brave</strong></p>
-      <p style="font-size:.8rem;margin-top:.5rem">Firefox, Safari, and most mobile browsers do not support WebUSB.</p>
+      <p style="font-size:.8rem;margin-top:.5rem">Firefox, Safari, and some mobile browsers do not support WebUSB.</p>
     </section>
 
     <section id="controls">
@@ -288,7 +306,7 @@ footer{margin-top:3rem;text-align:center;font-size:.75rem;color:var(--dim)}
 
     <section id="pc-library" class="hidden">
       <div class="lib-header">
-        <h2>💻 PC Library (Optional)</h2>
+        <h2>💻 Local Library (Optional)</h2>
         <span class="meta" id="lib-count"></span>
       </div>
       <div class="lib-note">Select a folder on your PC to scan for apps. Nothing is uploaded — all processing happens locally in your browser</div>
@@ -1122,7 +1140,7 @@ function renderResidual(){
       '<div class="res-info"><div class="pkg">'+esc(name)+'</div>' +
       '<div class="label">'+esc(r.pkg)+' · '+r.type+'</div></div>' +
       '<div class="res-size">'+fmtB(r.sizeBytes)+'</div>' +
-      '<button class="btn sm d" onclick="deleteResidual('+i+')">Remove</button>' +
+      '<span class="btns"><button class="btn sm d" onclick="deleteResidual('+i+')">Remove</button></span>' +
       '</div>';
   }).join('');
 }
@@ -1198,8 +1216,8 @@ function renderApps(){
       '<div class="app-name"><div class="pkg">'+esc(displayName)+'</div>' +
       '<div class="label">'+esc(a.pkg)+'</div></div>' +
       '<div class="app-meta">v'+esc(a.version)+'<br>'+size+(a.updatedAt?' \u00b7 '+new Date(a.updatedAt).toLocaleDateString():'')+'</div>' +
-      '<button class="btn sm s" title="Pulls App to PC" onclick="backupApp(this,\''+a.pkg.replace(/'/g,"\\'")+'\')">Export</button>' +
-      '<button class="btn sm d" onclick="uninstallApp(this,\''+a.pkg.replace(/'/g,"\\'")+'\')">Uninstall</button>' +
+      '<span class="btns"><button class="btn sm s" title="Pulls App to PC" onclick="backupApp(this,\''+a.pkg.replace(/'/g,"\\'")+'\')">Export</button>' +
+      '<button class="btn sm d" onclick="uninstallApp(this,\''+a.pkg.replace(/'/g,"\\'")+'\')">Uninstall</button></span>' +
       '</div>';
   }).join('');
 }
@@ -1661,7 +1679,7 @@ function renderLibrary(){
       '<div class="lib-name"><div class="pkg">'+name+'</div>' +
       '<div class="label">'+esc(a.pkg)+'</div></div>' +
       '<div class="lib-meta">'+verText+badge+'<br>'+size+(dateText?' \u00b7 '+dateText:'')+'</div>' +
-      '<button class="btn sm p" '+(canInstall?'':'disabled title="Connect a device first"')+' onclick="installFromLib(this,'+libApps.indexOf(a)+')">Install</button>' +
+      '<span class="btns"><button class="btn sm p" '+(canInstall?'':'disabled title="Connect a device first"')+' onclick="installFromLib(this,'+libApps.indexOf(a)+')">Install</button></span>' +
       '</div>';
   }).join('');
 }
