@@ -646,6 +646,100 @@ class AdbDevice{
     }
   }
 
+  // Streaming pull: writes chunks via onChunk callback instead of buffering in RAM.
+  // Returns {size, crc32}.
+  pullStream(remotePath,onChunk,onProgress){
+    const p=this._q.then(()=>this._pullStreamExec(remotePath,onChunk,onProgress));
+    this._q=p.catch(()=>{});
+    return p;
+  }
+
+  async _pullStreamExec(remotePath,onChunk,onProgress){
+    if(!this._ok)throw new Error('Not connected');
+    const lid=this._lid++;
+    await this._tx(OPEN,lid,0,'sync:\0');
+    let msg=await this._rxFor(lid);
+    if(msg.c!==OKAY)throw new Error('sync: stream rejected');
+    const rid=msg.a0;
+
+    try{
+      const sp=ENC.encode(remotePath);
+      const statReq=new Uint8Array(8+sp.length);
+      statReq.set(ENC.encode('STAT'));
+      new DataView(statReq.buffer).setUint32(4,sp.length,true);
+      statReq.set(sp,8);
+      await this._tx(WRTE,lid,rid,statReq);
+      msg=await this._rxFor(lid);
+      if(msg.c!==OKAY)throw new Error('STAT rejected');
+      msg=await this._rxFor(lid);
+      if(msg.c!==WRTE)throw new Error('STAT no response');
+      await this._tx(OKAY,lid,rid);
+      const statId=DEC.decode(msg.d.subarray(0,4));
+      let fileSize=0;
+      if(statId==='STAT'&&msg.d.length>=16){
+        fileSize=new DataView(msg.d.buffer,msg.d.byteOffset+8,4).getUint32(0,true);
+      }
+
+      const rp=ENC.encode(remotePath);
+      const rh=new Uint8Array(8+rp.length);
+      rh.set(ENC.encode('RECV'));
+      new DataView(rh.buffer).setUint32(4,rp.length,true);
+      rh.set(rp,8);
+      await this._tx(WRTE,lid,rid,rh);
+      msg=await this._rxFor(lid);
+      if(msg.c!==OKAY)throw new Error('RECV rejected');
+
+      let received=0;
+      let crc=0xFFFFFFFF;
+      let syncBuf=new Uint8Array(0);
+
+      const appendBuf=(data)=>{
+        const merged=new Uint8Array(syncBuf.length+data.length);
+        merged.set(syncBuf);merged.set(data,syncBuf.length);
+        syncBuf=merged;
+      };
+
+      for(;;){
+        while(syncBuf.length<8){
+          msg=await this._rxFor(lid);
+          if(msg.c===CLSE)throw new Error('Stream closed during pull');
+          if(msg.c!==WRTE)continue;
+          await this._tx(OKAY,lid,rid);
+          appendBuf(msg.d);
+        }
+
+        const id=DEC.decode(syncBuf.subarray(0,4));
+        const len=new DataView(syncBuf.buffer,syncBuf.byteOffset+4,4).getUint32(0,true);
+
+        if(id==='DONE'){
+          return {size:received,crc32:(crc^0xFFFFFFFF)>>>0};
+        }else if(id==='FAIL'){
+          while(syncBuf.length<8+len){
+            msg=await this._rxFor(lid);
+            if(msg.c===WRTE){await this._tx(OKAY,lid,rid);appendBuf(msg.d)}
+          }
+          throw new Error(DEC.decode(syncBuf.subarray(8,8+len)));
+        }else if(id==='DATA'){
+          while(syncBuf.length<8+len){
+            msg=await this._rxFor(lid);
+            if(msg.c===CLSE)throw new Error('Stream closed during pull');
+            if(msg.c===WRTE){await this._tx(OKAY,lid,rid);appendBuf(msg.d)}
+          }
+          const chunk=syncBuf.slice(8,8+len);
+          for(let i=0;i<chunk.length;i++)crc=CRC_TABLE[(crc^chunk[i])&0xFF]^(crc>>>8);
+          await onChunk(chunk);
+          received+=len;
+          onProgress?.(received,fileSize);
+          syncBuf=syncBuf.subarray(8+len);
+        }else{
+          throw new Error('Unexpected sync id: '+id);
+        }
+      }
+    }finally{
+      try{await this._tx(CLSE,lid,rid)}catch{}
+    }
+  }
+
   async getDeviceInfo(){
     // Single shell invocation with delimiters to avoid multiple stream opens
     const SEP='__QWADB__';
@@ -1830,90 +1924,11 @@ function showSpeed(sent,total,startMs){
   el.speedInfo.innerHTML='<span>'+fmtB(Math.round(speed))+'/s</span><span>'+fmtB(sent)+' / '+fmtB(total)+' &mdash; '+eta+' left</span>';
 }
 
-/* ── Minimal ZIP builder (store mode, no compression) ─────── */
-
-function buildZip(files){
-  // files: [{name:string, blob:Blob}]
-  // Returns a Blob of the zip file
-  const entries=[];
-  let offset=0;
-  const parts=[];
-
-  for(const f of files){
-    const nameBytes=ENC.encode(f.name);
-    const size=f.size;
-    const crc=f.crc;
-    // Local file header (30 + name)
-    const lh=new ArrayBuffer(30);
-    const lv=new DataView(lh);
-    lv.setUint32(0,0x04034b50,true); // sig
-    lv.setUint16(4,20,true); // version needed
-    lv.setUint16(6,0,true); // flags
-    lv.setUint16(8,0,true); // compression: store
-    lv.setUint16(10,0,true); // mod time
-    lv.setUint16(12,0,true); // mod date
-    lv.setUint32(14,crc,true); // crc32
-    lv.setUint32(18,size,true); // compressed
-    lv.setUint32(22,size,true); // uncompressed
-    lv.setUint16(26,nameBytes.length,true);
-    lv.setUint16(28,0,true); // extra len
-    parts.push(new Uint8Array(lh),nameBytes,f.blob);
-    entries.push({nameBytes,size,crc,offset});
-    offset+=30+nameBytes.length+size;
-  }
-
-  // Central directory
-  const cdStart=offset;
-  for(const e of entries){
-    const cd=new ArrayBuffer(46);
-    const cv=new DataView(cd);
-    cv.setUint32(0,0x02014b50,true);
-    cv.setUint16(4,20,true); // version made by
-    cv.setUint16(6,20,true); // version needed
-    cv.setUint16(8,0,true); // flags
-    cv.setUint16(10,0,true); // compression
-    cv.setUint16(12,0,true); cv.setUint16(14,0,true); // time/date
-    cv.setUint32(16,e.crc,true);
-    cv.setUint32(20,e.size,true);
-    cv.setUint32(24,e.size,true);
-    cv.setUint16(28,e.nameBytes.length,true);
-    cv.setUint16(30,0,true); cv.setUint16(32,0,true);
-    cv.setUint16(34,0,true); cv.setUint16(36,0,true);
-    cv.setUint32(38,32,true); // external attrs
-    cv.setUint32(42,e.offset,true);
-    parts.push(new Uint8Array(cd),e.nameBytes);
-    offset+=46+e.nameBytes.length;
-  }
-  const cdSize=offset-cdStart;
-
-  // End of central directory
-  const eocd=new ArrayBuffer(22);
-  const ev=new DataView(eocd);
-  ev.setUint32(0,0x06054b50,true);
-  ev.setUint16(4,0,true); ev.setUint16(6,0,true);
-  ev.setUint16(8,entries.length,true);
-  ev.setUint16(10,entries.length,true);
-  ev.setUint32(12,cdSize,true);
-  ev.setUint32(16,cdStart,true);
-  ev.setUint16(20,0,true);
-  parts.push(new Uint8Array(eocd));
-
-  return new Blob(parts,{type:'application/zip'});
-}
+/* ── CRC-32 table (used by streaming pull & backup) ───────── */
 
 const CRC_TABLE=(()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[i]=c}return t})();
-async function crc32Blob(blob){
-  let crc=0xFFFFFFFF;
-  const reader=blob.stream().getReader();
-  for(;;){
-    const{done,value}=await reader.read();
-    if(done)break;
-    for(let i=0;i<value.length;i++)crc=CRC_TABLE[(crc^value[i])&0xFF]^(crc>>>8);
-  }
-  return (crc^0xFFFFFFFF)>>>0;
-}
 
-/* ── App Backup ───────────────────────────────────────────── */
+/* ── App Backup (streaming ZIP — no RAM size limit) ───────── */
 
 window.backupApp=async function(btn,pkg){
   const row=btn.closest('.app-row');
@@ -1931,77 +1946,130 @@ window.backupApp=async function(btn,pkg){
   el.installStep.textContent='Backing up '+pkg+'…';
 
   const log=(msg,cls='')=>{const d=document.createElement('div');if(cls)d.className=cls;d.textContent=msg;el.installLog.appendChild(d);el.installLog.scrollTop=el.installLog.scrollHeight};
-  const zipFiles=[];
   let ok=true;
+  let ws=null;
 
   try{
-    // 1) Find APK path(s)
+    // Prompt user for save location (streams to disk — no RAM limit)
+    const appInfo=allApps.find(x=>x.pkg===pkg);
+    const fileName=(appInfo?.name||pkg)+'.zip';
+    const fh=await showSaveFilePicker({suggestedName:fileName,types:[{description:'ZIP Archive',accept:{'application/zip':['.zip']}}]});
+    ws=await fh.createWritable();
+
+    let offset=0;
+    const entries=[];
+
+    const writeBytes=async(data)=>{await ws.write(data);offset+=data.byteLength};
+
+    // Write a local file header with data-descriptor flag (sizes/crc unknown upfront)
+    const writeLocalHeader=async(nameBytes)=>{
+      const lh=new ArrayBuffer(30);
+      const lv=new DataView(lh);
+      lv.setUint32(0,0x04034b50,true);
+      lv.setUint16(4,20,true);
+      lv.setUint16(6,0x0008,true); // flag bit 3: data descriptor follows
+      await writeBytes(new Uint8Array(lh));
+      await writeBytes(nameBytes);
+    };
+
+    // Write data descriptor after the file content
+    const writeDataDescriptor=async(crc,size)=>{
+      const dd=new ArrayBuffer(16);
+      const dv=new DataView(dd);
+      dv.setUint32(0,0x08074b50,true);
+      dv.setUint32(4,crc,true);
+      dv.setUint32(8,size,true);
+      dv.setUint32(12,size,true);
+      await writeBytes(new Uint8Array(dd));
+    };
+
+    // Pull a file from device and stream it into the ZIP
+    const streamFile=async(remotePath,zipName,label)=>{
+      log('\u23F3 Pulling '+label+'…');
+      const nameBytes=ENC.encode(zipName);
+      const headerOffset=offset;
+      await writeLocalHeader(nameBytes);
+      const t0=Date.now();
+      const{size,crc32}=await adb.pullStream(remotePath,
+        async(chunk)=>{await writeBytes(chunk)},
+        (s,t)=>{if(t>0){el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0)}}
+      );
+      await writeDataDescriptor(crc32,size);
+      entries.push({nameBytes,size,crc:crc32,offset:headerOffset});
+      log('\u2713 '+zipName+' ('+fmtB(size)+')','ok');
+    };
+
+    // 1) APK(s)
     const apkRaw=await adb.shell('pm path "'+pkg+'" 2>/dev/null');
     const apkPaths=apkRaw.split('\n').map(l=>l.replace(/^package:/,'').trim()).filter(Boolean);
-
     for(const ap of apkPaths){
       const origName=ap.split('/').pop();
       const name=apkPaths.length>1?pkg+'_'+origName:pkg+'.apk';
-      log('\u23F3 Pulling '+origName+'…');
-      try{
-        const t0=Date.now();
-        const blob=await adb.pull(ap,(s,t)=>{if(t>0){el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0)}});
-        const crc=await crc32Blob(blob);
-        zipFiles.push({name,blob,size:blob.size,crc});
-        log('\u2713 '+name+' ('+fmtB(blob.size)+')','ok');
-      }catch(e){log('\u2717 Failed to pull '+name+': '+e.message,'err');ok=false}
+      try{await streamFile(ap,name,origName)}catch(e){log('\u2717 Failed to pull '+name+': '+e.message,'err');ok=false}
     }
 
-    // 2) List OBB files
+    // 2) OBB files
     const obbRaw=await adb.shell('ls -1 /sdcard/Android/obb/'+pkg+'/ 2>/dev/null');
     const obbFiles=obbRaw.split('\n').map(s=>s.trim()).filter(s=>s&&!s.includes('No such'));
     for(const f of obbFiles){
-      const rp='/sdcard/Android/obb/'+pkg+'/'+f;
-      log('\u23F3 Pulling obb/'+f+'…');
-      try{
-        const t0=Date.now();
-        const blob=await adb.pull(rp,(s,t)=>{if(t>0){el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0)}});
-        const crc=await crc32Blob(blob);
-        zipFiles.push({name:pkg+'/obb/'+f,blob,size:blob.size,crc});
-        log('\u2713 '+f+' ('+fmtB(blob.size)+')','ok');
-      }catch(e){log('\u2717 Failed: '+e.message,'err');ok=false}
+      try{await streamFile('/sdcard/Android/obb/'+pkg+'/'+f,pkg+'/obb/'+f,'obb/'+f)}catch(e){log('\u2717 Failed: '+e.message,'err');ok=false}
     }
 
-    // 3) List external data
+    // 3) External data
     const dataRaw=await adb.shell('find /sdcard/Android/data/'+pkg+'/ -type f 2>/dev/null | head -200');
     const dataFiles=dataRaw.split('\n').map(s=>s.trim()).filter(s=>s&&!s.includes('No such'));
     if(dataFiles.length){
       log('\u23F3 Pulling '+dataFiles.length+' data file(s)…');
       for(const fp of dataFiles){
         const rel=fp.replace('/sdcard/Android/data/'+pkg+'/','');
-        try{
-          const blob=await adb.pull(fp);
-          const crc=await crc32Blob(blob);
-          zipFiles.push({name:pkg+'/data/'+rel,blob,size:blob.size,crc});
-        }catch{}
+        try{await streamFile(fp,pkg+'/data/'+rel,rel)}catch{}
       }
       log('\u2713 Data files pulled','ok');
     }
 
-    if(!zipFiles.length){log('\u2717 Nothing to backup','err');ok=false;return}
+    if(!entries.length){log('\u2717 Nothing to backup','err');ok=false;await ws.abort();ws=null;return}
 
-    // Build ZIP
-    log('\u23F3 Building ZIP…');
-    el.installStep.textContent='Building ZIP…';
-    const zip=buildZip(zipFiles);
-    log('\u2713 ZIP ready: '+fmtB(zip.size),'ok');
+    // Central directory
+    log('\u23F3 Finalizing ZIP…');
+    el.installStep.textContent='Finalizing ZIP…';
+    const cdStart=offset;
+    for(const e of entries){
+      const cd=new ArrayBuffer(46);
+      const cv=new DataView(cd);
+      cv.setUint32(0,0x02014b50,true);
+      cv.setUint16(4,20,true);
+      cv.setUint16(6,20,true);
+      cv.setUint16(8,0x0008,true);
+      cv.setUint32(16,e.crc,true);
+      cv.setUint32(20,e.size,true);
+      cv.setUint32(24,e.size,true);
+      cv.setUint16(28,e.nameBytes.length,true);
+      cv.setUint32(38,32,true);
+      cv.setUint32(42,e.offset,true);
+      await writeBytes(new Uint8Array(cd));
+      await writeBytes(e.nameBytes);
+    }
+    const cdSize=offset-cdStart;
 
-    // Trigger download
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(zip);
-    const appInfo=allApps.find(x=>x.pkg===pkg);
-    a.download=(appInfo?.name||pkg)+'.zip';
-    document.body.appendChild(a);a.click();
-    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},5000);
+    // End of central directory
+    const eocd=new ArrayBuffer(22);
+    const ev=new DataView(eocd);
+    ev.setUint32(0,0x06054b50,true);
+    ev.setUint16(8,entries.length,true);
+    ev.setUint16(10,entries.length,true);
+    ev.setUint32(12,cdSize,true);
+    ev.setUint32(16,cdStart,true);
+    await writeBytes(new Uint8Array(eocd));
+
+    await ws.close();ws=null;
     el.installStep.textContent='Backup complete!';
+    log('\u2713 Saved to disk','ok');
   }catch(e){
-    log('\u2717 Backup failed: '+e.message,'err');ok=false;
-    el.installStep.textContent='Backup failed';
+    if(e.name==='AbortError'){log('Backup cancelled','err');el.installStep.textContent='Backup cancelled'}
+    else{log('\u2717 Backup failed: '+e.message,'err');el.installStep.textContent='Backup failed'}
+    ok=false;
+    try{if(ws)await ws.abort()}catch{}
+    ws=null;
   }finally{
     row.classList.remove('backing-up');
     btn.textContent='Export';
