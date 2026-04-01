@@ -328,16 +328,14 @@ footer{margin-top:3rem;text-align:center;font-size:.75rem;color:var(--dim)}
    1.  RSA key management for ADB authentication
    ================================================================
    ADB AUTH signs a 20-byte random token using raw RSA PKCS#1-v1.5.
-   The token IS the digest value (SHA-1 sized) – the device expects
-   EMSA-PKCS1-v1_5 padding around it, NOT a re-hash.  Web Crypto
+   The token is the digest value (SHA-1 sized) – the device expects
+   EMSA-PKCS1-v1_5 padding around it, not a re-hash.  Web Crypto
    always re-hashes, so we do the RSA math ourselves with BigInt.
    Keys are persisted in IndexedDB for automatic reconnection.
    ================================================================ */
-
 const DB='quest-web-adb',STORE='keys',KEYID='rsa';
 
-// -- base64url / BigInt helpers --
-
+// base64url / BigInt helpers
 function b64u2bytes(s){
   const b=s.replace(/-/g,'+').replace(/_/g,'/');
   const p=b+'='.repeat((4-b.length%4)%4);
@@ -353,8 +351,7 @@ function bi2le32(n,w){const a=new Uint32Array(w);const m=0xFFFFFFFFn;for(let i=0
 function modPow(b,e,m){let r=1n;b=((b%m)+m)%m;while(e>0n){if(e&1n)r=r*b%m;e>>=1n;b=b*b%m}return r}
 function modInv(a,m){let[or,r]=[a,m],[os,s]=[1n,0n];while(r>0n){const q=or/r;[or,r]=[r,or-q*r];[os,s]=[s,os-q*s]}return((os%m)+m)%m}
 
-// -- IndexedDB --
-
+// IndexedDB
 function openDB(){return new Promise((ok,no)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
 async function loadKeys(){const db=await openDB();return new Promise((ok,no)=>{const t=db.transaction(STORE,'readonly');const r=t.objectStore(STORE).get(KEYID);r.onsuccess=()=>ok(r.result??null);r.onerror=()=>no(r.error)})}
 async function saveKeys(pair){const db=await openDB();return new Promise((ok,no)=>{const t=db.transaction(STORE,'readwrite');t.objectStore(STORE).put(pair,KEYID);t.oncomplete=()=>ok();t.onerror=()=>no(t.error)})}
@@ -366,8 +363,7 @@ async function genKeys(){
 
 async function getOrCreateKeys(){let p=await loadKeys();if(p)return p;p=await genKeys();await saveKeys(p);return p}
 
-// -- ADB token signing (raw RSA PKCS#1-v1.5 via CRT) --
-
+// ADB token signing (raw RSA PKCS#1-v1.5 via CRT)
 const SHA1_PREFIX=new Uint8Array([0x30,0x21,0x30,0x09,0x06,0x05,0x2b,0x0e,0x03,0x02,0x1a,0x05,0x00,0x04,0x14]);
 
 function signToken(priv,token){
@@ -382,8 +378,7 @@ function signToken(priv,token){
   return bi2bytes(m2+h*q,kLen);
 }
 
-// -- Android RSA public-key struct --
-
+// Android RSA public-key struct
 function pubKeyPayload(pub){
   const NW=64,n=b64u2bi(pub.n),e=b64u2bi(pub.e);
   const nW=bi2le32(n,NW);
@@ -400,7 +395,6 @@ function pubKeyPayload(pub){
 /* ================================================================
    2.  ADB-over-WebUSB protocol
    ================================================================ */
-
 const CNXN=0x4e584e43,AUTH=0x48545541,OPEN=0x4e45504f,OKAY=0x59414b4f,WRTE=0x45545257,CLSE=0x45534c43;
 const AUTH_TOKEN=1,AUTH_SIG=2,AUTH_PUB=3;
 const AVER=0x01000000,MAXP=262144;
@@ -593,7 +587,7 @@ class AdbDevice{
       if(msg.c!==OKAY)throw new Error('RECV rejected');
 
       // Sync sub-packets can span multiple WRTE messages, so we
-      // accumulate raw bytes in a buffer and parse from that.
+      // accumulate raw bytes in a buffer and parse from that
       const chunks=[];
       let received=0;
       let syncBuf=new Uint8Array(0);
@@ -646,8 +640,8 @@ class AdbDevice{
     }
   }
 
-  // Streaming pull: writes chunks via onChunk callback instead of buffering in RAM.
-  // Returns {size, crc32}.
+  // Streaming pull: writes chunks via onChunk callback instead of buffering in RAM
+  // Returns {size, crc32}
   pullStream(remotePath,onChunk,onProgress){
     const p=this._q.then(()=>this._pullStreamExec(remotePath,onChunk,onProgress));
     this._q=p.catch(()=>{});
@@ -783,8 +777,7 @@ class AdbDevice{
     };
   }
 
-  // -- handshake --
-
+  // handshake
   async _handshake(){
     const keys=await getOrCreateKeys();
     // Clear read buffer — discard any leftover bytes from a previous session
@@ -808,8 +801,7 @@ class AdbDevice{
     throw new Error('Authentication failed');
   }
 
-  // -- message framing --
-
+  // message framing
   async _tx(cmd,a0,a1,data=null){
     let pl=new Uint8Array(0);
     if(data!=null)pl=(data instanceof Uint8Array)?data:ENC.encode(data);
@@ -822,7 +814,7 @@ class AdbDevice{
     if(pl.length>0)await this._usb.transferOut(this._out,pl);
   }
 
-  // Buffered read: USB bulk transfers don't align with ADB messages.
+  // Buffered read: USB bulk transfers don't align with ADB messages
   // A single transferIn may return header+data, or partial header, etc.
   async _readBytes(n){
     while(this._buf.length<n){
@@ -856,7 +848,6 @@ class AdbDevice{
 /* ================================================================
    3.  UI
    ================================================================ */
-
 const $=s=>document.querySelector(s);
 const el={
   dot:$('#dot'),stxt:$('#stxt'),
@@ -930,9 +921,7 @@ async function refresh(){
 }
 
 /* ── App list ──────────────────────────────────────────────── */
-
-// Package → display name lookup, loaded from external JSON file.
-// When moving to a server, just change the fetch URL.
+// Package → display name lookup, loaded from external JSON file
 const PKG_NAMES=new Map();
 fetch('package_name_lookup.json').then(r=>r.ok?r.json():null).then(data=>{
   if(data)for(const[k,v]of Object.entries(data))PKG_NAMES.set(k,v);
@@ -1080,14 +1069,13 @@ async function loadApps(){
 }
 
 /* ── Residual / orphan data cleanup ───────────────────────── */
-
 let residualItems=[];
 
 async function scanResidual(){
   el.resSection.classList.add('hidden');
   residualItems=[];
   try{
-    // Get ALL installed packages (user + system) so we never flag something that's actually installed
+    // Get all installed packages (user + system) so we never flag something that's actually installed
     const allPkgRaw=await adb.shell('pm list packages 2>/dev/null | sed "s/^package://" | sort -u');
     const installedSet=new Set(allPkgRaw.split('\n').map(s=>s.trim()).filter(Boolean));
 
@@ -1149,7 +1137,7 @@ window.deleteResidual=async function(idx){
   if(btn){btn.disabled=true;btn.textContent='Checking…'}
 
   try{
-    // SAFETY: re-verify right now that this package is truly not installed
+    // Safety: re-verify right now that this package is truly not installed
     const check=await adb.shell('pm list packages "'+r.pkg+'" 2>/dev/null');
     if(check.includes(r.pkg)){
       showErr('Safety check: '+r.pkg+' appears to be installed now. Skipping delete.');
@@ -1302,7 +1290,6 @@ el.appsSearch.addEventListener('input',renderApps);
 el.appsSort.addEventListener('change',sortAndRender);
 
 /* ── PC Library (File System Access API) ──────────────────── */
-
 const libEl={
   section:$('#pc-library'),
   list:$('#lib-list'),
@@ -1316,7 +1303,6 @@ const libEl={
 let libApps=[];
 let libDirHandle=null;
 let libSortBy='name';
-
 // PC Library section is shown/hidden via setUI() when a device connects/disconnects
 
 // ── Scan cache (localStorage) ────────────────────────────────
@@ -1326,7 +1312,7 @@ function saveLibCache(c){try{localStorage.setItem(libCacheKey(),JSON.stringify(c
 function apkFingerprint(f){return f.name+'|'+f.lastModified+'|'+f.size}
 
 function cleanFolderName(name){
-  // "Blade & Sorcery- Nomad v251210002+1.1.2 -VRP" -> "Blade & Sorcery- Nomad"
+  // "SomeAppName VR v123" -> "SomeAppName VR"
   let idx=name.indexOf(' v');
   while(idx>=0){
     if(idx+2<name.length&&/\d/.test(name[idx+2])){
@@ -1815,7 +1801,7 @@ async function walkEntry(entry,base=''){
 function detectPkg(entries){
   for(const e of entries){
     if(!e.file.name.toLowerCase().endsWith('.obb'))continue;
-    // From parent folder name (e.g. com.survios.Electronauts/)
+    // From parent folder name (e.g. com.example.AppName/)
     for(const seg of e.path.split('/')){
       if(/^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*){2,}$/.test(seg))return seg;
     }
@@ -1925,11 +1911,9 @@ function showSpeed(sent,total,startMs){
 }
 
 /* ── CRC-32 table (used by streaming pull & backup) ───────── */
-
 const CRC_TABLE=(()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[i]=c}return t})();
 
-/* ── App Backup (streaming ZIP — no RAM size limit) ───────── */
-
+/* ── App Backup (streaming ZIP without RAM size limit) ───────── */
 window.backupApp=async function(btn,pkg){
   const row=btn.closest('.app-row');
   row.classList.add('backing-up');
@@ -1950,7 +1934,7 @@ window.backupApp=async function(btn,pkg){
   let ws=null;
 
   try{
-    // Prompt user for save location (streams to disk — no RAM limit)
+    // Prompt user for save location (streams to disk to avoid RAM limits)
     const appInfo=allApps.find(x=>x.pkg===pkg);
     const fileName=(appInfo?.name||pkg)+'.zip';
     const fh=await showSaveFilePicker({suggestedName:fileName,types:[{description:'ZIP Archive',accept:{'application/zip':['.zip']}}]});
@@ -2096,7 +2080,7 @@ else autoReconnect();
   const TYPE_SPEED=110;       // ms per character typed
   const DELETE_SPEED=80;      // ms per character deleted
   const PAUSE_ON_JP=12000;    // long pause showing JP (12s)
-  const PAUSE_ON_CLAUDE=1800; // short pause showing Claude* (1.8s)
+  const PAUSE_ON_CLAUDE=1800; // short pause showing Claude (1.8s)
   const INITIAL_DELAY=6000;   // wait before first animation
 
   let cursor=true;
@@ -2148,9 +2132,9 @@ else autoReconnect();
       await typeText(CLAUDE);
       await sleep(400);
       stopCursorBlink();
-      // Brief pause on Claude (the joke)
+      // Brief pause on Claude
       await sleep(PAUSE_ON_CLAUDE);
-      // Now delete Claude* and restore JP
+      // Currently showing Claude — start deleting it
       startCursorBlink();
       await sleep(400);
       await deleteText();
