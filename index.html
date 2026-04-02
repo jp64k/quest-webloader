@@ -319,6 +319,13 @@ footer{margin-top:3rem;text-align:center;font-size:.75rem;color:var(--dim)}
           <option value="date">Sort by date</option>
           <option value="size">Sort by size</option>
         </select>
+        <select id="lib-filter" class="hidden">
+          <option value="all">All apps</option>
+          <option value="newer">Newer</option>
+          <option value="older">Older</option>
+          <option value="same">Same version</option>
+          <option value="not-installed">Not installed</option>
+        </select>
       </div>
       <div class="lib-list" id="lib-list"></div>
     </section>
@@ -1386,6 +1393,7 @@ const libEl={
   btnFolder:$('#btn-lib-folder'),
   btnRescan:$('#btn-lib-rescan'),
   sort:$('#lib-sort'),
+  filter:$('#lib-filter'),
 };
 
 let libApps=[];
@@ -1427,6 +1435,7 @@ libEl.btnRescan.addEventListener('click',async()=>{
 
 libEl.search.addEventListener('input',renderLibrary);
 libEl.sort.addEventListener('change',()=>{libSortBy=libEl.sort.value;sortAndRenderLibrary()});
+libEl.filter.addEventListener('change',renderLibrary);
 
 async function scanLibrary(){
   libEl.list.innerHTML='<div class="notice"><div class="spinner"></div><p>Scanning folder\u2026</p></div>';
@@ -1434,6 +1443,7 @@ async function scanLibrary(){
   libEl.btnRescan.classList.add('hidden');
   libEl.search.classList.add('hidden');
   libEl.sort.classList.add('hidden');
+  libEl.filter.classList.add('hidden');
 
   const files=[];
   await walkDirTree(libDirHandle,'',files);
@@ -1499,6 +1509,7 @@ async function scanLibrary(){
   libEl.btnRescan.classList.remove('hidden');
   libEl.search.classList.remove('hidden');
   libEl.sort.classList.remove('hidden');
+  libEl.filter.classList.remove('hidden');
 }
 
 async function walkDirTree(dirHandle,path,out){
@@ -1712,23 +1723,32 @@ function sortAndRenderLibrary(){
 
 function renderLibrary(){
   const q=(libEl.search.value||'').toLowerCase();
+  const fv=libEl.filter.value;
+
+  const installedMap=new Map();
+  for(const a of allApps)installedMap.set(a.pkg,a.version);
+
   const filtered=libApps.filter(a=>{
-    if(!q)return true;
-    return a.apkFileName.toLowerCase().includes(q)||
+    if(q&&!(a.apkFileName.toLowerCase().includes(q)||
            a.pkg.toLowerCase().includes(q)||
            a.displayName().toLowerCase().includes(q)||
-           a.folderName.toLowerCase().includes(q);
+           a.folderName.toLowerCase().includes(q)))return false;
+    if(fv!=='all'){
+      const cmp=a.versionName?compareVersions(a.versionName,installedMap.get(a.pkg)):null;
+      if(fv==='newer'&&cmp!=='newer')return false;
+      if(fv==='older'&&cmp!=='older')return false;
+      if(fv==='same'&&cmp!=='same')return false;
+      if(fv==='not-installed'&&cmp!=='new-app')return false;
+    }
+    return true;
   });
 
   libEl.count.textContent=filtered.length+' app'+(filtered.length!==1?'s':'');
 
   if(!filtered.length){
-    libEl.list.innerHTML='<p style="text-align:center;color:var(--dim);padding:1rem">'+(libApps.length?'No apps match your search.':'No apps found in this folder.')+'</p>';
+    libEl.list.innerHTML='<p style="text-align:center;color:var(--dim);padding:1rem">'+(libApps.length?'No apps match.':'No apps found in this folder.')+'</p>';
     return;
   }
-
-  const installedMap=new Map();
-  for(const a of allApps)installedMap.set(a.pkg,a.version);
 
   libEl.list.innerHTML=filtered.map(a=>{
     const name=esc(a.displayName());
@@ -1737,7 +1757,7 @@ function renderLibrary(){
     const cmp=a.versionName?compareVersions(a.versionName,deviceVer):null;
     let badge='';
     if(cmp==='newer')badge='<span class="ver-badge newer">Newer</span>';
-    else if(cmp==='older')badge='<span class="ver-badge older">Older on PC</span>';
+    else if(cmp==='older')badge='<span class="ver-badge older">Older</span>';
     else if(cmp==='same')badge='<span class="ver-badge same">Same version</span>';
     else if(cmp==='new-app')badge='<span class="ver-badge new-app">Not installed</span>';
 
