@@ -1014,7 +1014,30 @@ async function loadApps(){
     const progLabel=document.getElementById('apps-progress-label');
     const progBar=document.getElementById('apps-progress-bar');
 
-    // Phase 3: stream per-package data with live progress
+    // Phase 3: bulk-collect all du data in one call
+    const bulkRaw=await adb.shell(
+      'echo "##DU_DATA##"; du -sk /data/data/*/ 2>/dev/null; '+
+      'echo "##DU_EXT##"; du -sk /sdcard/Android/data/*/ 2>/dev/null; '+
+      'echo "##DU_OBB##"; du -sk /sdcard/Android/obb/*/ 2>/dev/null; '+
+      'echo "##DU_MEDIA##"; du -sk /sdcard/Android/media/*/ 2>/dev/null; '+
+      'echo "##END##"'
+    );
+    const duMaps={DU_DATA:new Map(),DU_EXT:new Map(),DU_OBB:new Map(),DU_MEDIA:new Map()};
+    let curSec=null;
+    for(const line of bulkRaw.split('\n')){
+      const l=line.trim();
+      if(/^##[A-Z_]+##$/.test(l)){curSec=l.slice(2,-2);continue}
+      if(curSec&&duMaps[curSec]){
+        const t=l.indexOf('\t');if(t<0)continue;
+        const kb=parseInt(l,10)||0;
+        let dir=l.substring(t+1).replace(/\/+$/,'');
+        const s=dir.lastIndexOf('/');
+        const pkg=s>=0?dir.substring(s+1):dir;
+        if(pkg)duMaps[curSec].set(pkg,kb);
+      }
+    }
+
+    // Phase 4: stream per-package data with live progress
     const script=
       'pkgs=$(pm list packages -3 2>/dev/null | sed "s/^package://" | sort -u); '+
       'for p in $pkgs; do '+
@@ -1023,12 +1046,8 @@ async function loadApps(){
         'n=$(echo "$info" | grep applicationLabel= | head -1 | sed "s/.*applicationLabel=//" | tr -d "\\r"); '+
         'a=$(pm path "$p" 2>/dev/null | head -1); a=${a#package:}; '+
         'i=0; [ -n "$a" ] && i=$(du -sk "$(dirname "$a")" 2>/dev/null | cut -f1); '+
-        'dd=$(du -sk /data/data/$p 2>/dev/null | cut -f1); '+
-        'ed=$(du -sk /sdcard/Android/data/$p 2>/dev/null | cut -f1); '+
-        'o=$(du -sk /sdcard/Android/obb/$p 2>/dev/null | cut -f1); '+
-        'md=$(du -sk /sdcard/Android/media/$p 2>/dev/null | cut -f1); '+
         'ut=0; [ -n "$a" ] && ut=$(stat -c %Y "$a" 2>/dev/null); '+
-        'echo "##${p}##${v}##${n}##${i:-0}##${dd:-0}##${ed:-0}##${o:-0}##${md:-0}##${ut:-0}"; '+
+        'echo "##${p}##${v}##${n}##${i:-0}##${ut:-0}"; '+
       'done; echo "##__DONE__##"';
 
     let count=0, lineBuf='';
@@ -1036,20 +1055,20 @@ async function loadApps(){
     const addedPkgs=new Set();
 
     const parseLine=(line)=>{
-      const m=line.match(/^##(.+?)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)##(.*)$/);
+      const m=line.match(/^##(.+?)##(.*)##(.*)##(.*)##(.*)$/);
       if(m&&m[1]!=='__DONE__'&&!addedPkgs.has(m[1])&&!isSystemPkg(m[1])){
         addedPkgs.add(m[1]);
         const installKB=parseInt(m[4],10)||0;
-        const intDataKB=parseInt(m[5],10)||0;
-        const extDataKB=parseInt(m[6],10)||0;
-        const obbKB=parseInt(m[7],10)||0;
-        const mediaKB=parseInt(m[8],10)||0;
+        const intDataKB=duMaps.DU_DATA.get(m[1])||0;
+        const extDataKB=duMaps.DU_EXT.get(m[1])||0;
+        const obbKB=duMaps.DU_OBB.get(m[1])||0;
+        const mediaKB=duMaps.DU_MEDIA.get(m[1])||0;
         all.push({
           pkg:m[1],
           version:m[2]||'\u2014',
           name:m[3]||'',
           sizeBytes:(installKB+intDataKB+extDataKB+obbKB+mediaKB)*1024,
-          updatedAt:(parseInt(m[9],10)||0)*1000
+          updatedAt:(parseInt(m[5],10)||0)*1000
         });
       }
       if(m) count++;
