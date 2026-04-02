@@ -2139,7 +2139,7 @@ window.backupApp=async function(btn,pkg){
     }
 
     // 3) External data
-    const dataRaw=await adb.shell('find /sdcard/Android/data/'+pkg+'/ -type f 2>/dev/null | head -200');
+    const dataRaw=await adb.shell('find /sdcard/Android/data/'+pkg+'/ -type f 2>/dev/null');
     const dataFiles=dataRaw.split('\n').map(s=>s.trim()).filter(s=>s&&!s.includes('No such'));
     if(dataFiles.length){
       log('\u23F3 Pulling '+dataFiles.length+' data file(s)…');
