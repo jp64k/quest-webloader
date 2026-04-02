@@ -2063,6 +2063,7 @@ window.backupApp=async function(btn,pkg){
       lv.setUint32(0,0x04034b50,true);
       lv.setUint16(4,20,true);
       lv.setUint16(6,0x0008,true); // flag bit 3: data descriptor follows
+      lv.setUint16(26,nameBytes.length,true);
       await writeBytes(new Uint8Array(lh));
       await writeBytes(nameBytes);
     };
