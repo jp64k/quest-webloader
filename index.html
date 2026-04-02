@@ -992,11 +992,10 @@ async function fetchAppInfo(pkg){
 }
 
 async function loadApps(){
-
   el.appsList.innerHTML='<div class="notice"><div class="spinner"></div><p>Scanning packages…</p></div>';
   el.appsCount.textContent='';
   try{
-    // Phase 1: get package count quickly
+    // Phase 1: get package list
     const pkgListRaw=await adb.shell('pm list packages -3 2>/dev/null | sed "s/^package://" | sort -u');
     const pkgList=pkgListRaw.split('\n').map(s=>s.trim()).filter(s=>s&&!isSystemPkg(s));
     const total=pkgList.length;
@@ -1014,41 +1013,91 @@ async function loadApps(){
     const progLabel=document.getElementById('apps-progress-label');
     const progBar=document.getElementById('apps-progress-bar');
 
-    // Phase 3: bulk-collect all du data in one call
+    // Phase 3: single bulk pre-fetch for all size data + paths
     const bulkRaw=await adb.shell(
       'echo "##DU_DATA##"; du -sk /data/data/*/ 2>/dev/null; '+
       'echo "##DU_EXT##"; du -sk /sdcard/Android/data/*/ 2>/dev/null; '+
       'echo "##DU_OBB##"; du -sk /sdcard/Android/obb/*/ 2>/dev/null; '+
       'echo "##DU_MEDIA##"; du -sk /sdcard/Android/media/*/ 2>/dev/null; '+
+      'p3f=$(pm list packages -3 -f 2>/dev/null | sed "s/^package://"); '+
+      'echo "##PATHS##"; echo "$p3f"; '+
+      'echo "##DU_APP##"; du -sk $(echo "$p3f" | sed "s/=[^=]*$//;s|/[^/]*$||" | sort -u) 2>/dev/null; '+
+      'echo "##STAT##"; stat -c "%Y %n" $(echo "$p3f" | sed "s/=[^=]*$//") 2>/dev/null; '+
       'echo "##END##"'
     );
-    const duMaps={DU_DATA:new Map(),DU_EXT:new Map(),DU_OBB:new Map(),DU_MEDIA:new Map()};
+
+    // Parse bulk output into sections
+    const sections={};
     let curSec=null;
     for(const line of bulkRaw.split('\n')){
       const l=line.trim();
-      if(/^##[A-Z_]+##$/.test(l)){curSec=l.slice(2,-2);continue}
-      if(curSec&&duMaps[curSec]){
+      if(/^##[A-Z_]+##$/.test(l)){curSec=l.slice(2,-2);sections[curSec]=[];continue}
+      if(curSec&&l){if(!sections[curSec])sections[curSec]=[];sections[curSec].push(l)}
+    }
+
+    // Parse du by last path segment (= package name)
+    function parseDuByPkg(lines){
+      const m=new Map();
+      for(const l of (lines||[])){
         const t=l.indexOf('\t');if(t<0)continue;
         const kb=parseInt(l,10)||0;
         let dir=l.substring(t+1).replace(/\/+$/,'');
         const s=dir.lastIndexOf('/');
-        const pkg=s>=0?dir.substring(s+1):dir;
-        if(pkg)duMaps[curSec].set(pkg,kb);
+        const key=s>=0?dir.substring(s+1):dir;
+        if(key&&!key.startsWith('~'))m.set(key,kb);
       }
+      return m;
     }
 
-    // Phase 4: stream per-package data with live progress
-    const script=
-      'pkgs=$(pm list packages -3 2>/dev/null | sed "s/^package://" | sort -u); '+
-      'for p in $pkgs; do '+
+    const duMaps={
+      DU_DATA:parseDuByPkg(sections.DU_DATA),
+      DU_EXT:parseDuByPkg(sections.DU_EXT),
+      DU_OBB:parseDuByPkg(sections.DU_OBB),
+      DU_MEDIA:parseDuByPkg(sections.DU_MEDIA)
+    };
+
+    // Install du + stat keyed by full path, resolved via PATHS map
+    const duAppByPath=new Map();
+    const statByPath=new Map();
+    const bulkPathsByPkg=new Map();
+    for(const l of (sections.PATHS||[])){
+      const eq=l.lastIndexOf('=');
+      if(eq<0)continue;
+      const apkPath=l.substring(0,eq);
+      const pkg=l.substring(eq+1);
+      bulkPathsByPkg.set(pkg,{apkPath,dirPath:apkPath.replace(/\/[^/]+$/,'')});
+    }
+    for(const l of (sections.DU_APP||[])){
+      const t=l.indexOf('\t');if(t<0)continue;
+      duAppByPath.set(l.substring(t+1).replace(/\/+$/,''),parseInt(l,10)||0);
+    }
+    for(const l of (sections.STAT||[])){
+      const sp=l.indexOf(' ');if(sp<0)continue;
+      statByPath.set(l.substring(sp+1).trim(),parseInt(l,10)||0);
+    }
+
+    // Phase 4: build per-package shell script — split known/unknown for speed
+    const knownPkgs=pkgList.filter(p=>PKG_NAMES.has(p));
+    const unknownPkgs=pkgList.filter(p=>!PKG_NAMES.has(p));
+    let script='';
+
+    // Known packages: version-only grep (skip applicationLabel)
+    if(knownPkgs.length){
+      script+='for p in '+knownPkgs.map(p=>'"'+p+'"').join(' ')+'; do ';
+      script+='v=$(dumpsys package "$p" 2>/dev/null | grep -m1 "versionName=" | sed "s/.*versionName=//" | tr -d " \\r"); ';
+      script+='echo "##${p}##${v}####0##0"; done; ';
+    }
+
+    // Unknown packages: full dumpsys for version + name
+    if(unknownPkgs.length){
+      script+='for p in '+unknownPkgs.map(p=>'"'+p+'"').join(' ')+'; do ';
+      script+=
         'info=$(dumpsys package "$p" 2>/dev/null | grep -m2 -E "versionName=|applicationLabel="); '+
         'v=$(echo "$info" | grep versionName= | head -1 | sed "s/.*versionName=//" | tr -d " \\r"); '+
-        'n=$(echo "$info" | grep applicationLabel= | head -1 | sed "s/.*applicationLabel=//" | tr -d "\\r"); '+
-        'a=$(pm path "$p" 2>/dev/null | head -1); a=${a#package:}; '+
-        'i=0; [ -n "$a" ] && i=$(du -sk "$(dirname "$a")" 2>/dev/null | cut -f1); '+
-        'ut=0; [ -n "$a" ] && ut=$(stat -c %Y "$a" 2>/dev/null); '+
-        'echo "##${p}##${v}##${n}##${i:-0}##${ut:-0}"; '+
-      'done; echo "##__DONE__##"';
+        'n=$(echo "$info" | grep applicationLabel= | head -1 | sed "s/.*applicationLabel=//" | tr -d "\\r"); ';
+      script+='echo "##${p}##${v}##${n}##0##0"; done; ';
+    }
+    script+='echo "##__DONE__##"';
 
     let count=0, lineBuf='';
     const all=[];
@@ -1058,17 +1107,21 @@ async function loadApps(){
       const m=line.match(/^##(.+?)##(.*)##(.*)##(.*)##(.*)$/);
       if(m&&m[1]!=='__DONE__'&&!addedPkgs.has(m[1])&&!isSystemPkg(m[1])){
         addedPkgs.add(m[1]);
-        const installKB=parseInt(m[4],10)||0;
+
+        const paths=bulkPathsByPkg.get(m[1]);
+        const installKB=paths?duAppByPath.get(paths.dirPath)||0:0;
+        const ts=paths?statByPath.get(paths.apkPath)||0:0;
         const intDataKB=duMaps.DU_DATA.get(m[1])||0;
         const extDataKB=duMaps.DU_EXT.get(m[1])||0;
         const obbKB=duMaps.DU_OBB.get(m[1])||0;
         const mediaKB=duMaps.DU_MEDIA.get(m[1])||0;
+
         all.push({
           pkg:m[1],
           version:m[2]||'\u2014',
           name:m[3]||'',
           sizeBytes:(installKB+intDataKB+extDataKB+obbKB+mediaKB)*1024,
-          updatedAt:(parseInt(m[5],10)||0)*1000
+          updatedAt:ts*1000
         });
       }
       if(m) count++;
@@ -1083,7 +1136,6 @@ async function loadApps(){
       progBar.style.width=pct+'%';
       progLabel.textContent='Loading '+Math.min(count,total)+' / '+total+' apps…';
     });
-    // Parse any remaining data in buffer
     if(lineBuf) parseLine(lineBuf);
 
     if(!all.length){
