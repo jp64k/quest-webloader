@@ -995,25 +995,7 @@ async function loadApps(){
   el.appsList.innerHTML='<div class="notice"><div class="spinner"></div><p>Scanning packages…</p></div>';
   el.appsCount.textContent='';
   try{
-    // Phase 1: get package list
-    const pkgListRaw=await adb.shell('pm list packages -3 2>/dev/null | sed "s/^package://" | sort -u');
-    const pkgList=pkgListRaw.split('\n').map(s=>s.trim()).filter(s=>s&&!isSystemPkg(s));
-    const total=pkgList.length;
-    if(!total){
-      el.appsList.innerHTML='<p style="text-align:center;color:var(--dim);padding:1rem">No user apps found.</p>';
-      return;
-    }
-
-    // Phase 2: show progress bar
-    el.appsList.innerHTML=
-      '<div class="notice" style="width:100%;max-width:340px;margin:0 auto">'+
-        '<p id="apps-progress-label" style="margin:0 0 .4rem;font-size:.85rem;color:var(--dim)">Loading 0 / '+total+' apps…</p>'+
-        '<div class="bar-track"><div class="bar-fill" id="apps-progress-bar" style="width:0;transition:width .3s ease"></div></div>'+
-      '</div>';
-    const progLabel=document.getElementById('apps-progress-label');
-    const progBar=document.getElementById('apps-progress-bar');
-
-    // Phase 3: single bulk pre-fetch for all size data + paths
+    // Bulk pre-fetch: all size data + paths in one shell call
     const bulkRaw=await adb.shell(
       'echo "##DU_DATA##"; du -sk /data/data/*/ 2>/dev/null; '+
       'echo "##DU_EXT##"; du -sk /sdcard/Android/data/*/ 2>/dev/null; '+
@@ -1035,7 +1017,6 @@ async function loadApps(){
       if(curSec&&l){if(!sections[curSec])sections[curSec]=[];sections[curSec].push(l)}
     }
 
-    // Parse du by last path segment (= package name)
     function parseDuByPkg(lines){
       const m=new Map();
       for(const l of (lines||[])){
@@ -1076,26 +1057,44 @@ async function loadApps(){
       statByPath.set(l.substring(sp+1).trim(),parseInt(l,10)||0);
     }
 
-    // Phase 4: build per-package shell script — split known/unknown for speed
+    // Derive package list from PATH, avoiding extra pm list round-trip
+    const pkgList=[...bulkPathsByPkg.keys()].filter(p=>!isSystemPkg(p)).sort();
+    const total=pkgList.length;
+    if(!total){
+      el.appsList.innerHTML='<p style="text-align:center;color:var(--dim);padding:1rem">No user apps found.</p>';
+      return;
+    }
+
+    // Show progress bar
+    el.appsList.innerHTML=
+      '<div class="notice" style="width:100%;max-width:340px;margin:0 auto">'+
+        '<p id="apps-progress-label" style="margin:0 0 .4rem;font-size:.85rem;color:var(--dim)">Loading 0 / '+total+' apps…</p>'+
+        '<div class="bar-track"><div class="bar-fill" id="apps-progress-bar" style="width:0;transition:width .3s ease"></div></div>'+
+      '</div>';
+    const progLabel=document.getElementById('apps-progress-label');
+    const progBar=document.getElementById('apps-progress-bar');
+
+    // Build parallel dumpsys script — split known/unknown for speed
     const knownPkgs=pkgList.filter(p=>PKG_NAMES.has(p));
     const unknownPkgs=pkgList.filter(p=>!PKG_NAMES.has(p));
     let script='';
 
-    // Known packages: version-only grep (skip applicationLabel)
+    // Known: version-only, parallel batches of 8
     if(knownPkgs.length){
-      script+='for p in '+knownPkgs.map(p=>'"'+p+'"').join(' ')+'; do ';
-      script+='v=$(dumpsys package "$p" 2>/dev/null | grep -m1 "versionName=" | sed "s/.*versionName=//" | tr -d " \\r"); ';
-      script+='echo "##${p}##${v}####0##0"; done; ';
+      script+='c=0; for p in '+knownPkgs.map(p=>'"'+p+'"').join(' ')+'; do ';
+      script+='{ v=$(dumpsys package "$p" 2>/dev/null | grep -m1 "versionName=" | sed "s/.*versionName=//" | tr -d " \\r"); echo "##${p}##${v}####0##0"; } & ';
+      script+='c=$((c+1)); [ $((c%8)) -eq 0 ] && wait; ';
+      script+='done; wait; ';
     }
-
-    // Unknown packages: full dumpsys for version + name
+    // Unknown: version+name, parallel batches of 8
     if(unknownPkgs.length){
-      script+='for p in '+unknownPkgs.map(p=>'"'+p+'"').join(' ')+'; do ';
-      script+=
-        'info=$(dumpsys package "$p" 2>/dev/null | grep -m2 -E "versionName=|applicationLabel="); '+
+      script+='c=0; for p in '+unknownPkgs.map(p=>'"'+p+'"').join(' ')+'; do ';
+      script+='{ info=$(dumpsys package "$p" 2>/dev/null | grep -m2 -E "versionName=|applicationLabel="); '+
         'v=$(echo "$info" | grep versionName= | head -1 | sed "s/.*versionName=//" | tr -d " \\r"); '+
-        'n=$(echo "$info" | grep applicationLabel= | head -1 | sed "s/.*applicationLabel=//" | tr -d "\\r"); ';
-      script+='echo "##${p}##${v}##${n}##0##0"; done; ';
+        'n=$(echo "$info" | grep applicationLabel= | head -1 | sed "s/.*applicationLabel=//" | tr -d "\\r"); '+
+        'echo "##${p}##${v}##${n}##0##0"; } & ';
+      script+='c=$((c+1)); [ $((c%8)) -eq 0 ] && wait; ';
+      script+='done; wait; ';
     }
     script+='echo "##__DONE__##"';
 
