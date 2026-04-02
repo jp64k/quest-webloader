@@ -1538,12 +1538,17 @@ function groupIntoApps(files){
     if(!apks.length)continue;
     const mainApk=apks[0];
     const obbs=gf.filter(f=>f.name.toLowerCase().endsWith('.obb'));
+    const dataFiles=gf
+      .filter(f=>!f.name.toLowerCase().endsWith('.apk')&&!f.name.toLowerCase().endsWith('.obb'))
+      .map(f=>({handle:f.handle,relPath:f.path.substring(key.length+1)}))
+      .filter(df=>df.relPath.includes('/'));
     const base=mainApk.name.replace(/\.apk$/i,'');
     const pkg=/^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*){2,}$/.test(base)?base:base;
     apps.push({
       apkHandle:mainApk.handle,
       apkFileName:mainApk.name,
       obbHandles:obbs.map(o=>o.handle),
+      dataFiles,
       allHandles:gf.map(f=>f.handle),
       folderName:key,
       pkg,
@@ -1821,6 +1826,28 @@ window.installFromLib=async function(btn,idx){
         log('\u2713 Pushed '+obbFile.name,'ok');
       }catch(e){log('\u2717 OBB error: '+e.message,'err');ok=false}
     }
+  }
+
+  // Push data files if present (e.g. com.pkg.name/files/... folders)
+  if(ok&&a.dataFiles&&a.dataFiles.length){
+    const dataBase='/sdcard/Android/data/';
+    log('\u23F3 Pushing '+a.dataFiles.length+' data file(s)\u2026');
+    // Pre-create all unique parent directories in batches
+    const parentDirs=[...new Set(a.dataFiles.map(df=>{const p=df.relPath.split('/');p.pop();return dataBase+p.join('/')}))].filter(d=>d!==dataBase);
+    for(let i=0;i<parentDirs.length;i+=30){
+      try{await adb.shell('mkdir -p '+parentDirs.slice(i,i+30).map(d=>'"'+d+'"').join(' '))}catch{}
+    }
+    let dfOk=true;
+    for(let i=0;i<a.dataFiles.length;i++){
+      const df=a.dataFiles[i];
+      const dfFile=await df.handle.getFile();
+      el.installStep.textContent='Data files '+(i+1)+'/'+a.dataFiles.length+': '+dfFile.name+'\u2026';
+      const t0d=Date.now();
+      try{
+        await adb.push(dfFile,dataBase+df.relPath,(s,t)=>{el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0d)});
+      }catch(e){log('\u2717 Data error: '+dfFile.name+': '+e.message,'err');dfOk=false;ok=false}
+    }
+    if(dfOk)log('\u2713 Pushed all '+a.dataFiles.length+' data file(s)','ok');
   }
 
   el.installStep.textContent=ok?'Installation complete!':'Completed with errors';
