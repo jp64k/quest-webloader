@@ -2084,22 +2084,26 @@ window.backupApp=async function(btn,pkg){
     const writeBytes=async(data)=>{await ws.write(data);offset+=data.byteLength};
     const setU64=(dv,off,val)=>{dv.setUint32(off,val>>>0,true);dv.setUint32(off+4,Math.floor(val/0x100000000)>>>0,true)};
 
-    // Write a local file header with ZIP64 extra field and data-descriptor flag
+    // Write a local file header: [30-byte fixed][filename][ZIP64 extra field]
     const writeLocalHeader=async(nameBytes)=>{
-      const lh=new ArrayBuffer(50); // 30 fixed + 20 ZIP64 extra field
+      const lh=new ArrayBuffer(30);
       const lv=new DataView(lh);
       lv.setUint32(0,0x04034b50,true);
       lv.setUint16(4,45,true);      // version needed: 4.5 (ZIP64)
       lv.setUint16(6,0x0008,true);  // flag bit 3: data descriptor follows
+      lv.setUint32(18,0xFFFFFFFF,true); // compressed size: signal ZIP64
+      lv.setUint32(22,0xFFFFFFFF,true); // uncompressed size: signal ZIP64
       lv.setUint16(26,nameBytes.length,true);
       lv.setUint16(28,20,true);     // extra field length: 20 bytes
-      // ZIP64 extra field — sizes are 0 here; actual values go in the data descriptor
-      lv.setUint16(30,0x0001,true); // ZIP64 tag
-      lv.setUint16(32,16,true);     // 16 bytes of data (two 8-byte size fields)
-      // uncompressed size (8 bytes): 0
-      // compressed size  (8 bytes): 0
       await writeBytes(new Uint8Array(lh));
-      await writeBytes(nameBytes);
+      await writeBytes(nameBytes);  // filename must come before extra field
+      // ZIP64 extra field — written after filename per ZIP spec
+      const ef=new ArrayBuffer(20);
+      const efv=new DataView(ef);
+      efv.setUint16(0,0x0001,true); // ZIP64 tag
+      efv.setUint16(2,16,true);     // 16 bytes of data (two 8-byte size fields)
+      // sizes are 0: bit 3 is set, actual values will be in the data descriptor
+      await writeBytes(new Uint8Array(ef));
     };
 
     // ZIP64 data descriptor (8-byte compressed/uncompressed size fields)
@@ -2152,7 +2156,7 @@ window.backupApp=async function(btn,pkg){
       log('\u23F3 Pulling '+dataFiles.length+' data file(s)…');
       for(const fp of dataFiles){
         const rel=fp.replace('/sdcard/Android/data/'+pkg+'/','');
-        try{await streamFile(fp,pkg+'/data/'+rel,rel)}catch{}
+        try{await streamFile(fp,pkg+'/'+rel,rel)}catch{}
       }
       log('\u2713 Data files pulled','ok');
     }
