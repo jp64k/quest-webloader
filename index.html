@@ -2082,27 +2082,34 @@ window.backupApp=async function(btn,pkg){
     const entries=[];
 
     const writeBytes=async(data)=>{await ws.write(data);offset+=data.byteLength};
+    const setU64=(dv,off,val)=>{dv.setUint32(off,val>>>0,true);dv.setUint32(off+4,Math.floor(val/0x100000000)>>>0,true)};
 
-    // Write a local file header with data-descriptor flag (sizes/crc unknown upfront)
+    // Write a local file header with ZIP64 extra field and data-descriptor flag
     const writeLocalHeader=async(nameBytes)=>{
-      const lh=new ArrayBuffer(30);
+      const lh=new ArrayBuffer(50); // 30 fixed + 20 ZIP64 extra field
       const lv=new DataView(lh);
       lv.setUint32(0,0x04034b50,true);
-      lv.setUint16(4,20,true);
-      lv.setUint16(6,0x0008,true); // flag bit 3: data descriptor follows
+      lv.setUint16(4,45,true);      // version needed: 4.5 (ZIP64)
+      lv.setUint16(6,0x0008,true);  // flag bit 3: data descriptor follows
       lv.setUint16(26,nameBytes.length,true);
+      lv.setUint16(28,20,true);     // extra field length: 20 bytes
+      // ZIP64 extra field — sizes are 0 here; actual values go in the data descriptor
+      lv.setUint16(30,0x0001,true); // ZIP64 tag
+      lv.setUint16(32,16,true);     // 16 bytes of data (two 8-byte size fields)
+      // uncompressed size (8 bytes): 0
+      // compressed size  (8 bytes): 0
       await writeBytes(new Uint8Array(lh));
       await writeBytes(nameBytes);
     };
 
-    // Write data descriptor after the file content
+    // ZIP64 data descriptor (8-byte compressed/uncompressed size fields)
     const writeDataDescriptor=async(crc,size)=>{
-      const dd=new ArrayBuffer(16);
+      const dd=new ArrayBuffer(24);
       const dv=new DataView(dd);
       dv.setUint32(0,0x08074b50,true);
       dv.setUint32(4,crc,true);
-      dv.setUint32(8,size,true);
-      dv.setUint32(12,size,true);
+      setU64(dv,8,size);   // compressed size
+      setU64(dv,16,size);  // uncompressed size
       await writeBytes(new Uint8Array(dd));
     };
 
@@ -2153,35 +2160,75 @@ window.backupApp=async function(btn,pkg){
     if(!entries.length){log('\u2717 Nothing to backup','err');ok=false;await ws.abort();ws=null;return}
 
     // Central directory
-    log('\u23F3 Finalizing ZIP…');
-    el.installStep.textContent='Finalizing ZIP…';
+    log('\u23F3 Finalizing ZIP\u2026');
+    el.installStep.textContent='Finalizing ZIP\u2026';
     const cdStart=offset;
     for(const e of entries){
+      const needSz=e.size>0xFFFFFFFF;
+      const needOff=e.offset>0xFFFFFFFF;
+      let z64DataLen=0;
+      if(needSz)z64DataLen+=16;  // uncompressed + compressed
+      if(needOff)z64DataLen+=8;  // local header offset
+      const extraLen=z64DataLen>0?4+z64DataLen:0;
       const cd=new ArrayBuffer(46);
       const cv=new DataView(cd);
       cv.setUint32(0,0x02014b50,true);
-      cv.setUint16(4,20,true);
-      cv.setUint16(6,20,true);
+      cv.setUint16(4,45,true);   // version made by: 4.5
+      cv.setUint16(6,45,true);   // version needed: 4.5
       cv.setUint16(8,0x0008,true);
       cv.setUint32(16,e.crc,true);
-      cv.setUint32(20,e.size,true);
-      cv.setUint32(24,e.size,true);
+      cv.setUint32(20,needSz?0xFFFFFFFF:e.size,true);
+      cv.setUint32(24,needSz?0xFFFFFFFF:e.size,true);
       cv.setUint16(28,e.nameBytes.length,true);
+      cv.setUint16(30,extraLen,true);
       cv.setUint32(38,32,true);
-      cv.setUint32(42,e.offset,true);
+      cv.setUint32(42,needOff?0xFFFFFFFF:e.offset,true);
       await writeBytes(new Uint8Array(cd));
       await writeBytes(e.nameBytes);
+      if(extraLen>0){
+        const ef=new ArrayBuffer(extraLen);
+        const efv=new DataView(ef);
+        efv.setUint16(0,0x0001,true);
+        efv.setUint16(2,z64DataLen,true);
+        let p=4;
+        if(needSz){setU64(efv,p,e.size);p+=8;setU64(efv,p,e.size);p+=8}
+        if(needOff){setU64(efv,p,e.offset)}
+        await writeBytes(new Uint8Array(ef));
+      }
     }
     const cdSize=offset-cdStart;
 
-    // End of central directory
+    // ZIP64 end of central directory record
+    const z64eocd=new ArrayBuffer(56);
+    const z64v=new DataView(z64eocd);
+    z64v.setUint32(0,0x06064b50,true);
+    setU64(z64v,4,44);                    // size of this record minus 12
+    z64v.setUint16(12,45,true);           // version made by
+    z64v.setUint16(14,45,true);           // version needed
+    // disk number fields left as 0
+    setU64(z64v,24,entries.length);       // entries on this disk
+    setU64(z64v,32,entries.length);       // total entries
+    setU64(z64v,40,cdSize);               // size of central directory
+    setU64(z64v,48,cdStart);              // offset of central directory
+    await writeBytes(new Uint8Array(z64eocd));
+
+    // ZIP64 end of central directory locator
+    const z64loc=new ArrayBuffer(20);
+    const z64lv=new DataView(z64loc);
+    z64lv.setUint32(0,0x07064b50,true);
+    // disk with start of zip64 EOCD: 0
+    setU64(z64lv,8,cdStart+cdSize);       // offset of zip64 EOCD record
+    z64lv.setUint32(16,1,true);           // total disks
+    await writeBytes(new Uint8Array(z64loc));
+
+    // Standard end of central directory (0xFFFF/0xFFFFFFFF signals ZIP64 to old tools)
     const eocd=new ArrayBuffer(22);
     const ev=new DataView(eocd);
     ev.setUint32(0,0x06054b50,true);
-    ev.setUint16(8,entries.length,true);
-    ev.setUint16(10,entries.length,true);
-    ev.setUint32(12,cdSize,true);
-    ev.setUint32(16,cdStart,true);
+    ev.setUint16(8,entries.length>0xFFFF?0xFFFF:entries.length,true);
+    ev.setUint16(10,entries.length>0xFFFF?0xFFFF:entries.length,true);
+    ev.setUint32(12,cdSize>0xFFFFFFFF?0xFFFFFFFF:cdSize,true);
+    ev.setUint32(16,cdStart>0xFFFFFFFF?0xFFFFFFFF:cdStart,true);
     await writeBytes(new Uint8Array(eocd));
 
     await ws.close();ws=null;
