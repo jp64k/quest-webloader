@@ -2090,7 +2090,7 @@ window.backupApp=async function(btn,pkg){
     const appInfo=allApps.find(x=>x.pkg===pkg);
     const displayName=appInfo?.name||pkg;
     const ver=appInfo?.version?(' v'+appInfo.version):'';
-    const fileName=displayName+ver+' '+pkg+'.zip';
+    const fileName=displayName+ver+'.zip';
     const fh=await showSaveFilePicker({suggestedName:fileName,types:[{description:'ZIP Archive',accept:{'application/zip':['.zip']}}]});
     ws=await fh.createWritable();
 
