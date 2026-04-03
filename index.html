@@ -1272,20 +1272,7 @@ function sortAndRender(){
 }
 
 function renderApps(){
-  const q=el.appsSearch.value.toLowerCase();
-  const filtered=allApps.filter(a=>{
-    if(q&&!(a.pkg.toLowerCase().includes(q)||(a.name&&a.name.toLowerCase().includes(q))))return false;
-    return true;
-  });
-
-  el.appsCount.textContent=filtered.length+' app'+(filtered.length!==1?'s':'');
-
-  if(filtered.length===0){
-    el.appsList.innerHTML='<p style="text-align:center;color:var(--dim);padding:1rem">No apps match.</p>';
-    return;
-  }
-
-  el.appsList.innerHTML=filtered.map(a=>{
+  el.appsList.innerHTML=allApps.map(a=>{
     const size=a.sizeBytes?fmtB(a.sizeBytes):'—';
     const displayName=a.name||a.pkg;
     return '<div class="app-row" data-pkg="'+a.pkg.replace(/"/g,'&quot;')+'">' +
@@ -1297,6 +1284,26 @@ function renderApps(){
       '<button class="btn sm d" onclick="uninstallApp(this,\''+a.pkg.replace(/'/g,"\\'")+'\')">Uninstall</button></span>' +
       '</div>';
   }).join('');
+  filterApps();
+}
+
+function filterApps(){
+  const q=el.appsSearch.value.toLowerCase();
+  const rows=el.appsList.querySelectorAll('.app-row');
+  let visible=0;
+  rows.forEach(row=>{
+    const pkg=row.dataset.pkg.toLowerCase();
+    const name=(row.querySelector('.app-name .pkg')||{}).textContent||'';
+    const match=!q||pkg.includes(q)||name.toLowerCase().includes(q);
+    row.style.display=match?'':'none';
+    if(match)visible++;
+  });
+  el.appsCount.textContent=visible+' app'+(visible!==1?'s':'');
+  let noMatch=el.appsList.querySelector('.no-match-msg');
+  if(visible===0&&allApps.length>0){
+    if(!noMatch){noMatch=document.createElement('p');noMatch.className='no-match-msg';noMatch.style.cssText='text-align:center;color:var(--dim);padding:1rem';noMatch.textContent='No apps match.';el.appsList.appendChild(noMatch)}
+    noMatch.style.display='';
+  }else if(noMatch){noMatch.style.display='none'}
 }
 
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
@@ -1381,7 +1388,7 @@ el.bd.addEventListener('click',doDisconnect);
 el.br.addEventListener('click',refresh);
 el.be.addEventListener('click',hideErr);
 el.btnApps.addEventListener('click',loadApps);
-el.appsSearch.addEventListener('input',renderApps);
+el.appsSearch.addEventListener('input',filterApps);
 el.appsSort.addEventListener('change',sortAndRender);
 
 /* ── PC Library (File System Access API) ──────────────────── */
@@ -1433,9 +1440,9 @@ libEl.btnRescan.addEventListener('click',async()=>{
   if(libDirHandle)await scanLibrary();
 });
 
-libEl.search.addEventListener('input',renderLibrary);
+libEl.search.addEventListener('input',filterLibrary);
 libEl.sort.addEventListener('change',()=>{libSortBy=libEl.sort.value;sortAndRenderLibrary()});
-libEl.filter.addEventListener('change',renderLibrary);
+libEl.filter.addEventListener('change',filterLibrary);
 
 async function scanLibrary(){
   libEl.list.innerHTML='<div class="notice"><div class="spinner"></div><p>Scanning folder\u2026</p></div>';
@@ -1727,35 +1734,10 @@ function sortAndRenderLibrary(){
 }
 
 function renderLibrary(){
-  const q=(libEl.search.value||'').toLowerCase();
-  const fv=libEl.filter.value;
-
   const installedMap=new Map();
   for(const a of allApps)installedMap.set(a.pkg,a.version);
 
-  const filtered=libApps.filter(a=>{
-    if(q&&!(a.apkFileName.toLowerCase().includes(q)||
-           a.pkg.toLowerCase().includes(q)||
-           a.displayName().toLowerCase().includes(q)||
-           a.folderName.toLowerCase().includes(q)))return false;
-    if(fv!=='all'){
-      const cmp=a.versionName?compareVersions(a.versionName,installedMap.get(a.pkg)):null;
-      if(fv==='newer'&&cmp!=='newer')return false;
-      if(fv==='older'&&cmp!=='older')return false;
-      if(fv==='same'&&cmp!=='same')return false;
-      if(fv==='not-installed'&&cmp!=='new-app')return false;
-    }
-    return true;
-  });
-
-  libEl.count.textContent=filtered.length+' app'+(filtered.length!==1?'s':'');
-
-  if(!filtered.length){
-    libEl.list.innerHTML='<p style="text-align:center;color:var(--dim);padding:1rem">'+(libApps.length?'No apps match.':'No apps found in this folder.')+'</p>';
-    return;
-  }
-
-  libEl.list.innerHTML=filtered.map(a=>{
+  libEl.list.innerHTML=libApps.map(a=>{
     const name=esc(a.displayName());
     const size=fmtB(a.totalSize);
     const deviceVer=installedMap.get(a.pkg);
@@ -1769,7 +1751,8 @@ function renderLibrary(){
     const verText=a.versionName?'v'+esc(a.versionName):'\u2014';
     const dateText=a.lastModified?new Date(a.lastModified).toLocaleDateString():'';
     const canInstall=adb&&adb.connected;
-    return '<div class="lib-row" data-pkg="'+esc(a.pkg)+'">' +
+    const cmpClass=cmp?' data-cmp="'+cmp+'"':'';
+    return '<div class="lib-row" data-pkg="'+esc(a.pkg)+'" data-folder="'+esc(a.folderName)+'" data-apk="'+esc(a.apkFileName)+'"'+cmpClass+'>' +
       '<img class="app-thumb" src="thumbnails/'+encodeURIComponent(a.pkg)+'.jpg" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=app-thumb-placeholder>\ud83c\udfae</div>\'">' +
       '<div class="lib-name"><div class="pkg">'+name+'</div>' +
       '<div class="label">'+esc(a.pkg)+'</div></div>' +
@@ -1777,6 +1760,37 @@ function renderLibrary(){
       '<span class="btns"><button class="btn sm p" '+(canInstall?'':'disabled title="Connect a device first"')+' onclick="installFromLib(this,'+libApps.indexOf(a)+')">Install</button></span>' +
       '</div>';
   }).join('');
+  filterLibrary();
+}
+
+function filterLibrary(){
+  const q=(libEl.search.value||'').toLowerCase();
+  const fv=libEl.filter.value;
+  const rows=libEl.list.querySelectorAll('.lib-row');
+  let visible=0;
+  rows.forEach(row=>{
+    const pkg=(row.dataset.pkg||'').toLowerCase();
+    const folder=(row.dataset.folder||'').toLowerCase();
+    const apk=(row.dataset.apk||'').toLowerCase();
+    const name=(row.querySelector('.lib-name .pkg')||{}).textContent||'';
+    let match=true;
+    if(q&&!(apk.includes(q)||pkg.includes(q)||name.toLowerCase().includes(q)||folder.includes(q)))match=false;
+    if(match&&fv!=='all'){
+      const cmp=row.dataset.cmp||null;
+      if(fv==='newer'&&cmp!=='newer')match=false;
+      if(fv==='older'&&cmp!=='older')match=false;
+      if(fv==='same'&&cmp!=='same')match=false;
+      if(fv==='not-installed'&&cmp!=='new-app')match=false;
+    }
+    row.style.display=match?'':'none';
+    if(match)visible++;
+  });
+  libEl.count.textContent=visible+' app'+(visible!==1?'s':'');
+  let noMatch=libEl.list.querySelector('.no-match-msg');
+  if(visible===0){
+    if(!noMatch){noMatch=document.createElement('p');noMatch.className='no-match-msg';noMatch.style.cssText='text-align:center;color:var(--dim);padding:1rem';noMatch.textContent=libApps.length?'No apps match.':'No apps found in this folder.';libEl.list.appendChild(noMatch)}
+    noMatch.style.display='';
+  }else if(noMatch){noMatch.style.display='none'}
 }
 
 window.installFromLib=async function(btn,idx){
