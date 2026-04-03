@@ -2088,7 +2088,9 @@ window.backupApp=async function(btn,pkg){
   try{
     // Prompt user for save location (streams to disk to avoid RAM limits)
     const appInfo=allApps.find(x=>x.pkg===pkg);
-    const fileName=(appInfo?.name||pkg)+'.zip';
+    const displayName=appInfo?.name||pkg;
+    const ver=appInfo?.version?(' v'+appInfo.version):'';
+    const fileName=displayName+ver+' '+pkg+'.zip';
     const fh=await showSaveFilePicker({suggestedName:fileName,types:[{description:'ZIP Archive',accept:{'application/zip':['.zip']}}]});
     ws=await fh.createWritable();
 
@@ -2160,7 +2162,7 @@ window.backupApp=async function(btn,pkg){
     const obbRaw=await adb.shell('ls -1 /sdcard/Android/obb/'+pkg+'/ 2>/dev/null');
     const obbFiles=obbRaw.split('\n').map(s=>s.trim()).filter(s=>s&&!s.includes('No such'));
     for(const f of obbFiles){
-      try{await streamFile('/sdcard/Android/obb/'+pkg+'/'+f,pkg+'/obb/'+f,'obb/'+f)}catch(e){log('\u2717 Failed: '+e.message,'err');ok=false}
+      try{await streamFile('/sdcard/Android/obb/'+pkg+'/'+f,pkg+'/'+f,f)}catch(e){log('\u2717 Failed: '+e.message,'err');ok=false}
     }
 
     // 3) External data
