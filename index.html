@@ -1466,6 +1466,15 @@ async function scanLibrary(){
     libEl.list.innerHTML='<div class="notice"><div class="spinner"></div><p>Reading app '+(i+1)+' of '+apps.length+'\u2026</p></div>';
     await Promise.all(apps.slice(i,i+BATCH).map(async app=>{
       try{
+        if(!app.apkHandle){
+          // install.txt-only app — compute total size, skip APK parsing
+          if(!app.totalSize){
+            let sz=0;
+            for(const h of app.allHandles){try{const f=await h.getFile();sz+=f.size}catch{}}
+            app.totalSize=sz;
+          }
+          return;
+        }
         const apkFile=await app.apkHandle.getFile();
         const fp=apkFingerprint(apkFile);
         app.lastModified=apkFile.lastModified;
@@ -1542,19 +1551,22 @@ function groupIntoApps(files){
   const apps=[];
   for(const[key,gf]of groups){
     const apks=gf.filter(f=>f.name.toLowerCase().endsWith('.apk'));
-    if(!apks.length)continue;
-    const mainApk=apks[0];
+    const installTxtFile=gf.find(f=>f.name.toLowerCase()==='install.txt');
+    if(!apks.length&&!installTxtFile)continue;
+    const mainApk=apks[0]||null;
     const obbs=gf.filter(f=>f.name.toLowerCase().endsWith('.obb'));
     const dataFiles=gf
       .filter(f=>!f.name.toLowerCase().endsWith('.apk')&&!f.name.toLowerCase().endsWith('.obb'))
       .map(f=>({handle:f.handle,relPath:f.path.substring(key.length+1)}))
       .filter(df=>df.relPath.includes('/'));
-    const base=mainApk.name.replace(/\.apk$/i,'');
+    const base=mainApk?mainApk.name.replace(/\.apk$/i,''):key;
     const pkg=/^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*){2,}$/.test(base)?base:base;
     apps.push({
-      apkHandle:mainApk.handle,
-      apkFileName:mainApk.name,
+      apkHandle:mainApk?mainApk.handle:null,
+      apkFileName:mainApk?mainApk.name:'',
       obbHandles:obbs.map(o=>o.handle),
+      installTxtHandle:installTxtFile?installTxtFile.handle:null,
+      allFiles:gf,
       dataFiles,
       allHandles:gf.map(f=>f.handle),
       folderName:key,
@@ -1810,6 +1822,18 @@ window.installFromLib=async function(btn,idx){
   const log=(msg,cls='')=>{const d=document.createElement('div');if(cls)d.className=cls;d.textContent=msg;el.installLog.appendChild(d);el.installLog.scrollTop=el.installLog.scrollHeight};
   let ok=true;
 
+  // If install.txt found, run its commands instead of the default flow
+  if(a.installTxtHandle){
+    el.installStep.textContent='Running install.txt\u2026';
+    log('\u{1F4CB} Found install.txt \u2014 running custom install commands');
+    try{
+      const txtFile=await a.installTxtHandle.getFile();
+      const txtContent=await txtFile.text();
+      // Build file entries list from allFiles for path resolution
+      const fileEntries=a.allFiles||[];
+      ok=await runInstallTxt(txtContent,fileEntries,log,true);
+    }catch(e){log('\u2717 Error reading install.txt: '+e.message,'err');ok=false}
+  }else if(a.apkHandle){
   // Push APK
   const apkFile=await a.apkHandle.getFile();
   const tmp='/data/local/tmp/_qadb_'+Date.now()+'.apk';
@@ -1863,6 +1887,7 @@ window.installFromLib=async function(btn,idx){
     }
     if(dfOk)log('\u2713 Pushed all '+a.dataFiles.length+' data file(s)','ok');
   }
+  } // end else if(a.apkHandle)
 
   el.installStep.textContent=ok?'Installation complete!':'Completed with errors';
   el.installBar.style.width='100%';
@@ -1950,6 +1975,154 @@ async function walkEntry(entry,base=''){
   return [];
 }
 
+/* ── install.txt support ──────────────────────────────────── */
+// Parse and execute ADB commands from an install.txt file.
+// For drag-drop: fileEntries is [{file,path},...] from walkEntry.
+// For library:   fileEntries is [{handle,path,name},...] (File System Access handles).
+async function runInstallTxt(txtContent, fileEntries, log, useHandles){
+  const lines=txtContent.split(/\r?\n/).map(l=>l.trim()).filter(l=>l&&!l.startsWith('#')&&!l.startsWith('//'));
+  let ok=true;
+
+  // Helper: resolve a local path from install.txt to an entry
+  function findFile(localPath){
+    // Normalise backslashes & strip leading ./ or quotes
+    let p=localPath.replace(/\\/g,'/').replace(/^["']+|["']+$/g,'').replace(/^\.\//, '');
+    // Try exact path match first, then basename match
+    for(const e of fileEntries){
+      const ep=(e.path||'').replace(/\\/g,'/');
+      if(ep===p||ep.endsWith('/'+p))return e;
+    }
+    // Basename fallback
+    const bn=p.split('/').pop().toLowerCase();
+    for(const e of fileEntries){
+      const en=(e.name||(e.file&&e.file.name)||'').toLowerCase();
+      if(en===bn)return e;
+    }
+    return null;
+  }
+
+  // Helper: find all entries under a local directory path
+  function findDir(localPath){
+    let p=localPath.replace(/\\/g,'/').replace(/^["']+|["']+$/g,'').replace(/^\.\//, '').replace(/\/$/,'');
+    const matches=[];
+    for(const e of fileEntries){
+      const ep=(e.path||'').replace(/\\/g,'/');
+      if(ep.startsWith(p+'/')||ep===p) matches.push(e);
+    }
+    return matches;
+  }
+
+  // Helper: get a File from an entry (works for both drag-drop and library handles)
+  async function getFile(entry){
+    if(entry.file instanceof File)return entry.file;
+    if(entry.handle&&typeof entry.handle.getFile==='function')return await entry.handle.getFile();
+    return null;
+  }
+
+  for(const line of lines){
+    log('\u25B6 '+line);
+
+    // adb install [-r] [-g] [-d] "file.apk"
+    const installMatch=line.match(/^adb\s+install\s+((?:-[a-z]\s+)*)["']?([^"']+?)["']?\s*$/i);
+    if(installMatch){
+      const apkPath=installMatch[2].trim();
+      const entry=findFile(apkPath);
+      if(!entry){log('\u2717 File not found: '+apkPath,'err');ok=false;continue}
+      const file=await getFile(entry);
+      if(!file){log('\u2717 Cannot read: '+apkPath,'err');ok=false;continue}
+      const tmp='/data/local/tmp/_qadb_'+Date.now()+'.apk';
+      try{
+        el.installStep.textContent='Installing '+file.name+'\u2026';
+        const t0=Date.now();
+        await adb.push(file,tmp,(s,t)=>{el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0)});
+        log('\u2713 Pushed '+file.name+', installing\u2026','ok');
+        el.installStep.textContent='Running pm install\u2026';
+        el.installBar.style.width='100%';
+        const flags=installMatch[1].trim();
+        const out=await adb.shell('pm install '+flags+' "'+tmp+'" 2>&1');
+        if(out.includes('Success'))log('\u2713 Installed '+file.name,'ok');
+        else{log('\u2717 Install failed: '+out.trim(),'err');ok=false}
+        await adb.shell('rm -f "'+tmp+'"');
+      }catch(e){log('\u2717 Error: '+e.message,'err');ok=false;try{await adb.shell('rm -f "'+tmp+'"')}catch{}}
+      continue;
+    }
+
+    // adb push "local" "remote"
+    const pushMatch=line.match(/^adb\s+push\s+["']?([^"']+?)["']?\s+["']?([^"']+?)["']?\s*$/i);
+    if(pushMatch){
+      const localPath=pushMatch[1].trim();
+      const remotePath=pushMatch[2].trim();
+      // Check if it's a directory push
+      const dirEntries=findDir(localPath);
+      if(dirEntries.length>1||(dirEntries.length===1&&dirEntries[0].path!==localPath)){
+        // It's a directory — push all files inside it
+        const basePath=localPath.replace(/\\/g,'/').replace(/^["']+|["']+$/g,'').replace(/^\.\//, '').replace(/\/$/,'');
+        try{await adb.shell('mkdir -p "'+remotePath+'"')}catch{}
+        for(const de of dirEntries){
+          const file=await getFile(de);
+          if(!file)continue;
+          const relPath=(de.path||'').replace(/\\/g,'/');
+          const subPath=relPath.startsWith(basePath+'/')?relPath.substring(basePath.length+1):'';
+          if(!subPath)continue;
+          const destPath=remotePath.replace(/\/$/,'')+'/'+subPath;
+          const destDir=destPath.substring(0,destPath.lastIndexOf('/'));
+          try{await adb.shell('mkdir -p "'+destDir+'"')}catch{}
+          el.installStep.textContent='Pushing '+file.name+'\u2026';
+          try{
+            const t0=Date.now();
+            await adb.push(file,destPath,(s,t)=>{el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0)});
+            log('\u2713 Pushed '+file.name,'ok');
+          }catch(e){log('\u2717 Push error: '+file.name+': '+e.message,'err');ok=false}
+        }
+      }else{
+        // Single file push
+        const entry=findFile(localPath);
+        if(!entry){log('\u2717 File not found: '+localPath,'err');ok=false;continue}
+        const file=await getFile(entry);
+        if(!file){log('\u2717 Cannot read: '+localPath,'err');ok=false;continue}
+        try{
+          const destDir=remotePath.endsWith('/')?remotePath:remotePath.substring(0,remotePath.lastIndexOf('/'));
+          if(destDir)try{await adb.shell('mkdir -p "'+destDir+'"')}catch{}
+          const dest=remotePath.endsWith('/')?remotePath+file.name:remotePath;
+          el.installStep.textContent='Pushing '+file.name+'\u2026';
+          const t0=Date.now();
+          await adb.push(file,dest,(s,t)=>{el.installBar.style.width=Math.round(s/t*100)+'%';showSpeed(s,t,t0)});
+          log('\u2713 Pushed '+file.name,'ok');
+        }catch(e){log('\u2717 Push error: '+e.message,'err');ok=false}
+      }
+      continue;
+    }
+
+    // adb shell <command>
+    const shellMatch=line.match(/^adb\s+shell\s+(.+)$/i);
+    if(shellMatch){
+      const cmd=shellMatch[1].trim();
+      el.installStep.textContent='Running: '+cmd.substring(0,60)+(cmd.length>60?'\u2026':'');
+      try{
+        const out=await adb.shell(cmd+' 2>&1');
+        if(out.trim())log(out.trim());
+        log('\u2713 Shell command done','ok');
+      }catch(e){log('\u2717 Shell error: '+e.message,'err');ok=false}
+      continue;
+    }
+
+    // adb uninstall <pkg>
+    const uninstallMatch=line.match(/^adb\s+uninstall\s+["']?([^"'\s]+)["']?\s*$/i);
+    if(uninstallMatch){
+      const pkg=uninstallMatch[1].trim();
+      el.installStep.textContent='Uninstalling '+pkg+'\u2026';
+      try{
+        const out=await adb.shell('pm uninstall "'+pkg+'" 2>&1');
+        log(out.trim()||'\u2713 Uninstalled '+pkg, out.includes('Success')?'ok':'warn');
+      }catch(e){log('\u2717 Uninstall error: '+e.message,'err');ok=false}
+      continue;
+    }
+
+    log('\u26A0 Unrecognised command (skipped)','warn');
+  }
+  return ok;
+}
+
 function detectPkg(entries){
   for(const e of entries){
     if(!e.file.name.toLowerCase().endsWith('.obb'))continue;
@@ -1965,9 +2138,11 @@ function detectPkg(entries){
 }
 
 async function handleInstall(entries){
+  // Check for install.txt in the dropped entries
+  const installTxtEntry=entries.find(e=>e.file.name.toLowerCase()==='install.txt');
   const apks=entries.filter(e=>e.file.name.toLowerCase().endsWith('.apk'));
   const obbs=entries.filter(e=>e.file.name.toLowerCase().endsWith('.obb'));
-  if(!apks.length&&!obbs.length){showErr('No APK or OBB files found in the dropped items.');return}
+  if(!apks.length&&!obbs.length&&!installTxtEntry){showErr('No APK or OBB files found in the dropped items.');return}
 
   const pkg=detectPkg(entries);
 
@@ -1982,6 +2157,40 @@ async function handleInstall(entries){
 
   const log=(msg,cls='')=>{const d=document.createElement('div');if(cls)d.className=cls;d.textContent=msg;el.installLog.appendChild(d);el.installLog.scrollTop=el.installLog.scrollHeight};
   let ok=true;
+
+  // If install.txt found, run its commands instead of the default flow
+  if(installTxtEntry){
+    el.installStep.textContent='Running install.txt\u2026';
+    log('\u{1F4CB} Found install.txt \u2014 running custom install commands');
+    try{
+      const txtContent=await installTxtEntry.file.text();
+      ok=await runInstallTxt(txtContent,entries,log,false);
+    }catch(e){log('\u2717 Error reading install.txt: '+e.message,'err');ok=false}
+
+    el.installStep.textContent=ok?'Installation complete!':'Completed with errors';
+    el.installBar.style.width='100%';
+    el.installBar.className='bar-fill'+(ok?'':' low');
+    log(ok?'\u2713 All done!':'\u26A0 Some steps failed.', ok?'ok':'err');
+    el.speedInfo.textContent='';
+
+    // Refresh installed list
+    try{
+      const raw=await adb.shell('pm list packages -3 2>/dev/null | sed "s/^package://" | sort -u');
+      const current=new Set(raw.split('\n').map(s=>s.trim()).filter(Boolean));
+      const existing=new Set(allApps.map(a=>a.pkg));
+      for(const p of current){
+        if(!existing.has(p)&&!isSystemPkg(p)){
+          const info=await fetchAppInfo(p);
+          if(info){allApps.push(info);log('\u2795 Added '+info.name+' to list','ok')}
+        }
+      }
+      sortAndRender();
+    }catch{}
+
+    if(adb.connected)scheduleRefresh();
+    setTimeout(()=>{el.installBox.classList.add('hidden');el.installBar.className='bar-fill'},ok?5000:15000);
+    return;
+  }
 
   // Install APKs
   for(const apk of apks){
