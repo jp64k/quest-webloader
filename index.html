@@ -1276,7 +1276,7 @@ function renderApps(){
     const size=a.sizeBytes?fmtB(a.sizeBytes):'—';
     const displayName=a.name||a.pkg;
     return '<div class="app-row" data-pkg="'+a.pkg.replace(/"/g,'&quot;')+'">' +
-      '<img class="app-thumb" src="thumbnails/'+encodeURIComponent(a.pkg)+'.jpg" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=app-thumb-placeholder>\ud83c\udfae</div>\'">' +
+      '<img class="app-thumb" src="thumbnails/'+encodeURIComponent(a.pkg.toLowerCase())+'.webp" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=app-thumb-placeholder>\ud83c\udfae</div>\'">' +
       '<div class="app-name"><div class="pkg">'+esc(displayName)+'</div>' +
       '<div class="label">'+esc(a.pkg)+'</div></div>' +
       '<div class="app-meta">v'+esc(a.version)+'<br>'+size+(a.updatedAt?' \u00b7 '+new Date(a.updatedAt).toLocaleDateString():'')+'</div>' +
@@ -1765,7 +1765,7 @@ function renderLibrary(){
     const canInstall=adb&&adb.connected;
     const cmpClass=cmp?' data-cmp="'+cmp+'"':'';
     return '<div class="lib-row" data-pkg="'+esc(a.pkg)+'" data-folder="'+esc(a.folderName)+'" data-apk="'+esc(a.apkFileName)+'"'+cmpClass+'>' +
-      '<img class="app-thumb" src="thumbnails/'+encodeURIComponent(a.pkg)+'.jpg" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=app-thumb-placeholder>\ud83c\udfae</div>\'">' +
+      '<img class="app-thumb" src="thumbnails/'+encodeURIComponent(a.pkg.toLowerCase())+'.webp" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=app-thumb-placeholder>\ud83c\udfae</div>\'">' +
       '<div class="lib-name"><div class="pkg">'+name+'</div>' +
       '<div class="label">'+esc(a.pkg)+'</div></div>' +
       '<div class="lib-meta">'+verText+badge+'<br>'+size+(dateText?' \u00b7 '+dateText:'')+'</div>' +
